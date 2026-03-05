@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MessageType {
+  TEXT
+  TRANSCRIPT
+}
+
+enum RoomStatus {
+  ACTIVE
+  ENDED
+}
+
+model Room {
+  id           String            @id @default(cuid())
+  roomId       String            @unique
+  status       RoomStatus        @default(ACTIVE)
+  endedAt      DateTime?
+  createdById  String?
+  createdBy    User?             @relation("CreatedRooms", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  messages     Message[]
+  participants RoomParticipant[]
+}
+
+model Message {
+  id            String      @id @default(cuid())
+  roomRefId     String
+  room          Room        @relation(fields: [roomRefId], references: [id], onDelete: Cascade)
+  type          MessageType
+  externalRef   String?     @unique
+  senderName    String
+  senderUserId  String?
+  senderUser    User?       @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  participantId String?
+  content       String
+  createdAt     DateTime    @default(now())
+
+  @@index([roomRefId, createdAt])
+}
+
+model User {
+  id               String            @id @default(cuid())
+  username         String            @unique
+  passwordHash     String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         Session[]
+  createdRooms     Room[]            @relation("CreatedRooms")
+  roomParticipants RoomParticipant[]
+  messages         Message[]
+  providerKeys     UserProviderKeys?
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model RoomParticipant {
+  id        String   @id @default(cuid())
+  roomRefId String
+  room      Room     @relation(fields: [roomRefId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@unique([roomRefId, userId])
+  @@index([userId, joinedAt])
+}
+
+model UserProviderKeys {
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  livekitUrlEncrypted      String?
+  livekitApiKeyEncrypted   String?
+  livekitApiSecretEncrypted String?
+  deepgramApiKeyEncrypted  String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
