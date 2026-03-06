@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useUiLanguage } from "@/lib/use-ui-language";
 
 type AuthPageClientProps = {
   mode: "login" | "register";
@@ -21,6 +22,11 @@ function normalizeNextPath(raw: string | null) {
 
 export default function AuthPageClient({ mode }: AuthPageClientProps) {
   const router = useRouter();
+  const { language, setLanguage } = useUiLanguage();
+  const isZh = language === "zh";
+  const t = (zh: string, en: string) => (isZh ? zh : en);
+  const toggleLanguage = () => setLanguage(isZh ? "en" : "zh");
+
   const searchParams = useSearchParams();
   const nextPath = useMemo(() => normalizeNextPath(searchParams.get("next")), [searchParams]);
   const [username, setUsername] = useState("");
@@ -28,10 +34,11 @@ export default function AuthPageClient({ mode }: AuthPageClientProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const title = mode === "login" ? "登录" : "注册";
+  const title = mode === "login" ? t("登录", "Sign In") : t("注册", "Sign Up");
   const submitEndpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
   const switchHref = mode === "login" ? `/register?next=${encodeURIComponent(nextPath)}` : `/login?next=${encodeURIComponent(nextPath)}`;
-  const switchLabel = mode === "login" ? "还没有账号？去注册" : "已有账号？去登录";
+  const switchLabel =
+    mode === "login" ? t("还没有账号？去注册", "No account yet? Sign up") : t("已有账号？去登录", "Have an account? Sign in");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,12 +53,12 @@ export default function AuthPageClient({ mode }: AuthPageClientProps) {
       });
       const payload = (await response.json()) as AuthResponse;
       if (!response.ok) {
-        throw new Error(payload.error ?? `${title}失败`);
+        throw new Error(payload.error ?? `${title}${t("失败", " failed")}`);
       }
 
       router.replace(nextPath);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : `${title}失败`);
+      setError(submitError instanceof Error ? submitError.message : `${title}${t("失败", " failed")}`);
     } finally {
       setLoading(false);
     }
@@ -60,31 +67,41 @@ export default function AuthPageClient({ mode }: AuthPageClientProps) {
   return (
     <main className="auth-page">
       <section className="auth-card">
+        <div className="header-actions" style={{ justifyContent: "flex-end", marginTop: 0, marginBottom: 16 }}>
+          <button
+            type="button"
+            className="ghost-btn lang-toggle-btn"
+            aria-label={t("切换语言", "Switch language")}
+            onClick={toggleLanguage}
+          >
+            {isZh ? "EN" : "中文"}
+          </button>
+        </div>
         <h1>{title}</h1>
-        <p>使用用户名和密码继续。</p>
+        <p>{t("使用用户名和密码继续。", "Continue with your username and password.")}</p>
 
         <form className="auth-form" onSubmit={handleSubmit}>
-          <label htmlFor="username">用户名</label>
+          <label htmlFor="username">{t("用户名", "Username")}</label>
           <input
             id="username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            placeholder="3-32 位，小写字母/数字/_"
+            placeholder={t("3-32 位，小写字母/数字/_", "3-32 chars, lowercase letters/numbers/_")}
             autoComplete="username"
           />
 
-          <label htmlFor="password">密码</label>
+          <label htmlFor="password">{t("密码", "Password")}</label>
           <input
             id="password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="至少 6 位"
+            placeholder={t("至少 6 位", "At least 6 characters")}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
 
           <button type="submit" disabled={loading}>
-            {loading ? `${title}中...` : title}
+            {loading ? `${title}${t("中...", "...")}` : title}
           </button>
         </form>
 

@@ -105,6 +105,14 @@ a:focus-visible {
   margin-top: 12px;
 }
 
+.lang-toggle-btn {
+  height: 40px;
+  min-width: 68px;
+  padding: 0 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .user-chip {
   display: inline-flex;
   align-items: center;

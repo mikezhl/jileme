@@ -6,6 +6,8 @@ import { ParticipantKind, Room, RoomEvent, Track } from "livekit-client";
 
 import { ChatMessage } from "@/lib/chat-types";
 import { decodeLivekitChatMessageEvent, LIVEKIT_CHAT_MESSAGE_TOPIC } from "@/lib/livekit-chat-event";
+import { useUiLanguage } from "@/lib/use-ui-language";
+import { toDateLocale, type UiLanguage } from "@/lib/ui-language";
 
 type TokenResponse = {
   token: string;
@@ -68,9 +70,9 @@ type RoomMetaState = {
   };
 };
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, language: UiLanguage) {
   if (!value) {
-    return "N/A";
+    return language === "zh" ? "无" : "N/A";
   }
 
   const date = new Date(value);
@@ -78,7 +80,7 @@ function formatDate(value: string | null) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(toDateLocale(language), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -88,12 +90,12 @@ function formatDate(value: string | null) {
   }).format(date);
 }
 
-function formatTime(value: string) {
+function formatTime(value: string, language: UiLanguage) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(toDateLocale(language), {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -123,6 +125,13 @@ function isOwnMessage(message: ChatMessage, participantId: string, username: str
 }
 
 export default function RoomPageClient({ roomId, username }: RoomPageClientProps) {
+  const { language, setLanguage } = useUiLanguage();
+  const isZh = language === "zh";
+  const t = useCallback((zh: string, en: string) => (isZh ? zh : en), [isZh]);
+  const toggleLanguage = useCallback(() => {
+    setLanguage(isZh ? "en" : "zh");
+  }, [isZh, setLanguage]);
+
   const roomRef = useRef<Room | null>(null);
   const audioContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
@@ -191,7 +200,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     });
     const payload = (await response.json()) as RoomMetaResponse;
     if (!response.ok) {
-      throw new Error(payload.error ?? "Failed to load room metadata");
+      throw new Error(payload.error ?? t("加载房间元数据失败", "Failed to load room metadata"));
     }
 
     setRoomMeta({
@@ -201,7 +210,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       keyMasks: payload.keyMasks,
       keySources: payload.keySources,
     });
-  }, [roomId]);
+  }, [roomId, t]);
 
   const fetchMessages = useCallback(
     async (since?: string | null) => {
@@ -216,12 +225,12 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       const response = await fetch(endpoint.toString(), { cache: "no-store" });
       const payload = (await response.json()) as MessagesResponse;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Failed to fetch messages");
+        throw new Error(payload.error ?? t("获取消息失败", "Failed to fetch messages"));
       }
 
       upsertMessages(payload.messages);
     },
-    [roomId, upsertMessages],
+    [roomId, t, upsertMessages],
   );
 
   const connectRoom = useCallback(async () => {
@@ -242,7 +251,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       });
       const tokenPayload = (await tokenRes.json()) as TokenResponse;
       if (!tokenRes.ok) {
-        throw new Error(tokenPayload.error ?? "Failed to fetch LiveKit token");
+        throw new Error(tokenPayload.error ?? t("获取 LiveKit Token 失败", "Failed to fetch LiveKit token"));
       }
 
       setRoomMeta((current) => ({
@@ -318,7 +327,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       setConnectionState("connected");
       void fetchMessages(latestMessageCreatedAtRef.current).catch(() => undefined);
     } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Failed to connect room");
+      setRoomError(error instanceof Error ? error.message : t("连接房间失败", "Failed to connect room"));
       disconnectRoom();
     }
   }, [
@@ -329,6 +338,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     markTranscriptionReady,
     roomId,
     roomMeta.status,
+    t,
     upsertMessages,
   ]);
 
@@ -342,9 +352,9 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       await roomRef.current.localParticipant.setMicrophoneEnabled(nextMicState);
       setMicEnabled(nextMicState);
     } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Failed to toggle microphone");
+      setRoomError(error instanceof Error ? error.message : t("切换麦克风失败", "Failed to toggle microphone"));
     }
-  }, [connectionState, micEnabled]);
+  }, [connectionState, micEnabled, t]);
 
   async function endConversation() {
     if (!roomMeta.isCreator || roomMeta.status === "ENDED") {
@@ -362,7 +372,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         error?: string;
       };
       if (!response.ok || !payload.room) {
-        throw new Error(payload.error ?? "Failed to end room");
+        throw new Error(payload.error ?? t("结束房间失败", "Failed to end room"));
       }
 
       setRoomMeta((current) => ({
@@ -372,7 +382,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       }));
       disconnectRoom();
     } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Failed to end room");
+      setRoomError(error instanceof Error ? error.message : t("结束房间失败", "Failed to end room"));
     } finally {
       setEndingRoom(false);
     }
@@ -402,13 +412,13 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
       const payload = (await response.json()) as { message?: ChatMessage; error?: string };
       if (!response.ok || !payload.message) {
-        throw new Error(payload.error ?? "Failed to send message");
+        throw new Error(payload.error ?? t("发送消息失败", "Failed to send message"));
       }
 
       setChatInput("");
       upsertMessages([payload.message]);
     } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Failed to send message");
+      setRoomError(error instanceof Error ? error.message : t("发送消息失败", "Failed to send message"));
     } finally {
       setSendingText(false);
     }
@@ -419,9 +429,9 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     setMessages([]);
     setRoomError("");
     void Promise.all([fetchRoomMeta(), fetchMessages(null)]).catch((error) => {
-      setRoomError(error instanceof Error ? error.message : "Failed to load room data");
+      setRoomError(error instanceof Error ? error.message : t("加载房间数据失败", "Failed to load room data"));
     });
-  }, [fetchMessages, fetchRoomMeta]);
+  }, [fetchMessages, fetchRoomMeta, t]);
 
   useEffect(() => {
     if (roomMeta.status === "ENDED" && connectionState !== "disconnected") {
@@ -498,19 +508,19 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               <h1 style={{ fontSize: '1.5rem', margin: 0 }}>{roomId}</h1>
               <span className={`room-status ${connectionState}`}>
                 {connectionState === "connected"
-                  ? "通话中"
+                  ? t("通话中", "In Call")
                   : connectionState === "connecting"
-                    ? "连接中"
-                    : "未开始"}
+                    ? t("连接中", "Connecting")
+                    : t("未开始", "Not Started")}
               </span>
               <span className={`room-status transcription-status ${transcriptionState}`}>
                 {transcriptionState === "ready"
-                  ? "转录中"
+                  ? t("转录中", "Transcribing")
                   : transcriptionState === "starting"
-                    ? "启动中"
+                    ? t("启动中", "Starting")
                     : transcriptionState === "disabled"
-                      ? "未启用"
-                      : "未转录"}
+                      ? t("未启用", "Disabled")
+                      : t("未转录", "Not Transcribing")}
               </span>
             </div>
             <p style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', margin: '8px 0 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
@@ -518,22 +528,41 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               {isEnded && (
                 <>
                   <span style={{ color: 'var(--line-strong)' }}>|</span>
-                  <span>已结束（{formatDate(roomMeta.endedAt)}）</span>
+                  <span>
+                    {t("已结束", "Ended")} ({formatDate(roomMeta.endedAt, language)})
+                  </span>
                 </>
               )}
               <span style={{ color: 'var(--line-strong)' }}>|</span>
-              <span title={`LiveKit: ${roomMeta.keySources.livekit === "user" ? "用户Key" : "平台默认"}\nDeepgram: ${roomMeta.keySources.deepgram === "user" ? "用户Key" : "平台默认"}`}>
-                鉴权：{roomMeta.keySources.livekit === "user" || roomMeta.keySources.deepgram === "user" ? "自备 Key" : "平台默认"}
+              <span
+                title={`LiveKit: ${roomMeta.keySources.livekit === "user" ? t("用户 Key", "User key") : t("平台默认", "Platform default")}\nDeepgram: ${roomMeta.keySources.deepgram === "user" ? t("用户 Key", "User key") : t("平台默认", "Platform default")}`}
+              >
+                {t("鉴权", "Auth")}:{" "}
+                {roomMeta.keySources.livekit === "user" || roomMeta.keySources.deepgram === "user"
+                  ? t("自备 Key", "Own key")
+                  : t("平台默认", "Platform default")}
               </span>
             </p>
           </div>
           <div className="room-actions">
+            <button
+              type="button"
+              className="ghost-btn lang-toggle-btn"
+              aria-label={t("切换语言", "Switch language")}
+              onClick={toggleLanguage}
+            >
+              {isZh ? "EN" : "中文"}
+            </button>
             <Link className="text-link-button" style={{ height: '40px' }} href="/">
-              返回
+              {t("返回", "Back")}
             </Link>
             {roomMeta.isCreator ? (
               <button type="button" className="ghost-btn" style={{ height: '40px', background: 'transparent', border: '1px solid var(--error)', color: 'var(--error)' }} onClick={() => void endConversation()} disabled={endingRoom || isEnded}>
-                {endingRoom ? "结束中..." : isEnded ? "已结束" : "结束对话"}
+                {endingRoom
+                  ? t("结束中...", "Ending...")
+                  : isEnded
+                    ? t("已结束", "Ended")
+                    : t("结束对话", "End Room")}
               </button>
             ) : null}
           </div>
@@ -544,7 +573,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         <section className="chat-panel">
           <div className="chat-scroll">
             {messages.length === 0 ? (
-              <p className="empty-chat">暂无历史消息。</p>
+              <p className="empty-chat">{t("暂无历史消息。", "No message history yet.")}</p>
             ) : (
               messages.map((message) => {
                 const own = isOwnMessage(message, participantId, username);
@@ -552,11 +581,13 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
                   <div key={message.id} className={`message-row ${own ? "self" : "other"}`}>
                     <article className={`bubble ${message.type} ${own ? "self" : "other"}`}>
                       <header className="bubble-meta">
-                        <strong>{own ? "我" : message.senderName}</strong>
+                        <strong>{own ? t("我", "Me") : message.senderName}</strong>
                         <span className={`bubble-source ${message.type}`}>
-                          {message.type === "transcript" ? "语音转写" : "文字消息"}
+                          {message.type === "transcript"
+                            ? t("语音转写", "Transcript")
+                            : t("文字消息", "Text")}
                         </span>
-                        <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
+                        <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
                       </header>
                       <p>{message.content}</p>
                     </article>
@@ -572,25 +603,31 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
           <input
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
-            placeholder={isEnded ? "房间已结束，仅可查看历史记录" : "输入消息..."}
+            placeholder={
+              isEnded
+                ? t("房间已结束，仅可查看历史记录", "This room has ended and is now read-only")
+                : t("输入消息...", "Type a message...")
+            }
             disabled={isEnded}
           />
           <button type="submit" className="primary-btn" disabled={sendingText || isEnded}>
-            {sendingText ? "发送中" : "发送文字"}
+            {sendingText ? t("发送中", "Sending") : t("发送文字", "Send")}
           </button>
           
           {connectionState === "connected" ? (
             <>
               <button type="button" onClick={toggleMic} disabled={isEnded} className={micEnabled ? "primary-btn" : "ghost-btn"}>
-                {micEnabled ? "静音" : "开麦"}
+                {micEnabled ? t("静音", "Mute") : t("开麦", "Unmute")}
               </button>
               <button type="button" className="ghost-btn" onClick={disconnectRoom}>
-                挂断语音
+                {t("挂断语音", "Hang Up")}
               </button>
             </>
           ) : (
             <button type="button" className="ghost-btn" onClick={connectRoom} disabled={connectionState === "connecting" || isEnded}>
-              {connectionState === "connecting" ? "连接中..." : "开启语音"}
+              {connectionState === "connecting"
+                ? t("连接中...", "Connecting...")
+                : t("开启语音", "Start Voice")}
             </button>
           )}
         </form>

@@ -3,6 +3,8 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useUiLanguage } from "@/lib/use-ui-language";
+import { toDateLocale, type UiLanguage } from "@/lib/ui-language";
 
 type RoomSummary = {
   roomId: string;
@@ -58,9 +60,9 @@ type DashboardPageClientProps = {
   initialNextPath: string | null;
 };
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, language: UiLanguage) {
   if (!value) {
-    return "N/A";
+    return language === "zh" ? "无" : "N/A";
   }
 
   const date = new Date(value);
@@ -68,7 +70,7 @@ function formatDate(value: string | null) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(toDateLocale(language), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -78,8 +80,11 @@ function formatDate(value: string | null) {
   }).format(date);
 }
 
-function roomStatusLabel(status: string) {
-  return status === "ENDED" ? "已结束" : "进行中";
+function roomStatusLabel(status: string, language: UiLanguage) {
+  if (status === "ENDED") {
+    return language === "zh" ? "已结束" : "Ended";
+  }
+  return language === "zh" ? "进行中" : "Active";
 }
 
 function normalizeNextPath(raw: string | null | undefined) {
@@ -98,6 +103,10 @@ export default function DashboardPageClient({
   initialNextPath,
 }: DashboardPageClientProps) {
   const router = useRouter();
+  const { language, setLanguage } = useUiLanguage();
+  const isZh = language === "zh";
+  const t = (zh: string, en: string) => (isZh ? zh : en);
+  const toggleLanguage = () => setLanguage(isZh ? "en" : "zh");
   const [user, setUser] = useState<UserInfo | null>(initialUser);
 
   const [createdRooms, setCreatedRooms] = useState(initialCreatedRooms);
@@ -129,14 +138,18 @@ export default function DashboardPageClient({
 
   const isAuthenticated = Boolean(user);
   const hasHistory = createdRooms.length > 0 || joinedRooms.length > 0;
-  const authTitle = authMode === "register" ? "注册" : "登录";
+  const authTitle = authMode === "register" ? t("注册", "Sign Up") : t("登录", "Sign In");
 
   const heroSubtitle = useMemo(() => {
     if (!isAuthenticated) {
-      return "一个实时的AI 辩论/吵架 辅助+分析+总结 平台";
+      return isZh
+        ? "一个实时的 AI 辩论/吵架辅助 + 分析 + 总结平台"
+        : "A real-time AI debate and argument copilot for assist, analysis, and summaries.";
     }
-    return `你好，${user!.username}。可以直接创建或加入房间。`;
-  }, [isAuthenticated, user]);
+    return isZh
+      ? `你好，${user!.username}。可以直接创建或加入房间。`
+      : `Hi, ${user!.username}. You can create or join a room right away.`;
+  }, [isAuthenticated, isZh, user]);
 
   function openAuthModal(mode: AuthMode, nextPath?: string | null) {
     setAuthMode(mode);
@@ -166,7 +179,7 @@ export default function DashboardPageClient({
     }
 
     setPendingRoomAction(action);
-    setRoomActionError("请先登录后再操作。");
+    setRoomActionError(t("请先登录后再操作。", "Please sign in first."));
     openAuthModal("login");
     return false;
   }
@@ -186,13 +199,15 @@ export default function DashboardPageClient({
           clearDataAfterLogout();
           openAuthModal("login");
         }
-        throw new Error(payload.error ?? "获取历史房间失败");
+        throw new Error(payload.error ?? t("获取历史房间失败", "Failed to load room history"));
       }
 
       setCreatedRooms(payload.createdRooms);
       setJoinedRooms(payload.joinedRooms);
     } catch (error) {
-      setRoomActionError(error instanceof Error ? error.message : "获取历史房间失败");
+      setRoomActionError(
+        error instanceof Error ? error.message : t("获取历史房间失败", "Failed to load room history"),
+      );
     } finally {
       setDashboardLoading(false);
     }
@@ -210,7 +225,7 @@ export default function DashboardPageClient({
         clearDataAfterLogout();
         openAuthModal("login");
       }
-      throw new Error(payload.error ?? "读取 Key 状态失败");
+      throw new Error(payload.error ?? t("读取 Key 状态失败", "Failed to read key status"));
     }
     setKeyStatus(payload.status);
   }
@@ -225,10 +240,10 @@ export default function DashboardPageClient({
     const keyPayload = (await keyResponse.json()) as KeyStatusResponse;
 
     if (!dashboardResponse.ok) {
-      throw new Error(dashboardPayload.error ?? "获取历史房间失败");
+      throw new Error(dashboardPayload.error ?? t("获取历史房间失败", "Failed to load room history"));
     }
     if (!keyResponse.ok) {
-      throw new Error(keyPayload.error ?? "读取 Key 状态失败");
+      throw new Error(keyPayload.error ?? t("读取 Key 状态失败", "Failed to read key status"));
     }
 
     setCreatedRooms(dashboardPayload.createdRooms);
@@ -238,7 +253,7 @@ export default function DashboardPageClient({
 
   async function bootstrapRoom(action: "create" | "join") {
     if (action === "join" && roomIdToJoin.trim().length === 0) {
-      setRoomActionError("请输入房间号。");
+      setRoomActionError(t("请输入房间号。", "Please enter a room ID."));
       return;
     }
 
@@ -261,13 +276,15 @@ export default function DashboardPageClient({
           setPendingRoomAction(action);
           openAuthModal("login");
         }
-        throw new Error(payload.error ?? "房间操作失败");
+        throw new Error(payload.error ?? t("房间操作失败", "Room action failed"));
       }
 
       setPendingRoomAction(null);
       router.push(`/${encodeURIComponent(payload.roomId)}`);
     } catch (error) {
-      setRoomActionError(error instanceof Error ? error.message : "房间操作失败");
+      setRoomActionError(
+        error instanceof Error ? error.message : t("房间操作失败", "Room action failed"),
+      );
     } finally {
       setRoomActionLoading(null);
     }
@@ -308,7 +325,7 @@ export default function DashboardPageClient({
       });
       const payload = (await response.json()) as AuthResponse;
       if (!response.ok || !payload.user) {
-        throw new Error(payload.error ?? `${authTitle}失败`);
+        throw new Error(payload.error ?? `${authTitle}${t("失败", " failed")}`);
       }
 
       setUser(payload.user);
@@ -333,7 +350,7 @@ export default function DashboardPageClient({
         await bootstrapRoom(action);
       }
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : `${authTitle}失败`);
+      setAuthError(error instanceof Error ? error.message : `${authTitle}${t("失败", " failed")}`);
     } finally {
       setAuthLoading(false);
     }
@@ -366,7 +383,7 @@ export default function DashboardPageClient({
           clearDataAfterLogout();
           openAuthModal("login");
         }
-        throw new Error(payload.error ?? "保存 Key 失败");
+        throw new Error(payload.error ?? t("保存 Key 失败", "Failed to save key"));
       }
       setKeyStatus(payload.status);
       setKeyForm({
@@ -376,7 +393,7 @@ export default function DashboardPageClient({
         deepgramApiKey: "",
       });
     } catch (error) {
-      setKeyError(error instanceof Error ? error.message : "保存 Key 失败");
+      setKeyError(error instanceof Error ? error.message : t("保存 Key 失败", "Failed to save key"));
     } finally {
       setKeyLoading(false);
     }
@@ -403,7 +420,7 @@ export default function DashboardPageClient({
           clearDataAfterLogout();
           openAuthModal("login");
         }
-        throw new Error(payload.error ?? "清空 Key 失败");
+        throw new Error(payload.error ?? t("清空 Key 失败", "Failed to clear key"));
       }
       setKeyStatus(payload.status);
       setKeyForm({
@@ -413,7 +430,7 @@ export default function DashboardPageClient({
         deepgramApiKey: "",
       });
     } catch (error) {
-      setKeyError(error instanceof Error ? error.message : "清空 Key 失败");
+      setKeyError(error instanceof Error ? error.message : t("清空 Key 失败", "Failed to clear key"));
     } finally {
       setKeyLoading(false);
     }
@@ -425,15 +442,23 @@ export default function DashboardPageClient({
         <section className="minimal-shell">
           <header className="minimal-header">
             <div>
-              <h1>急了么？</h1>
+              <h1>{t("急了么？", "Jileme")}</h1>
               <p className="subtitle">{heroSubtitle}</p>
             </div>
             <div className="header-actions">
+              <button
+                type="button"
+                className="ghost-btn lang-toggle-btn"
+                aria-label={t("切换语言", "Switch language")}
+                onClick={toggleLanguage}
+              >
+                {isZh ? "EN" : "中文"}
+              </button>
               {isAuthenticated ? (
                 <>
                   <span className="user-chip">{user?.username}</span>
                   <button type="button" className="ghost-btn" onClick={() => void handleLogout()}>
-                    退出登录
+                    {t("退出登录", "Sign Out")}
                   </button>
                 </>
               ) : (
@@ -446,7 +471,7 @@ export default function DashboardPageClient({
                       openAuthModal("login");
                     }}
                   >
-                    登录
+                    {t("登录", "Sign In")}
                   </button>
                   <button
                     type="button"
@@ -456,7 +481,7 @@ export default function DashboardPageClient({
                       openAuthModal("register");
                     }}
                   >
-                    注册
+                    {t("注册", "Sign Up")}
                   </button>
                 </>
               )}
@@ -471,16 +496,20 @@ export default function DashboardPageClient({
                 disabled={roomActionLoading !== null}
                 onClick={() => void handleCreateRoom()}
               >
-                {roomActionLoading === "create" ? "创建中..." : "创建房间"}
+                {roomActionLoading === "create"
+                  ? t("创建中...", "Creating...")
+                  : t("创建房间", "Create Room")}
               </button>
               <form className="join-room-form" onSubmit={handleJoinRoom}>
                 <input
                   value={roomIdToJoin}
                   onChange={(event) => setRoomIdToJoin(event.target.value)}
-                  placeholder="输入已有房间号"
+                  placeholder={t("输入已有房间号", "Enter an existing room ID")}
                 />
                 <button type="submit" className="primary-btn large-btn" disabled={roomActionLoading !== null}>
-                  {roomActionLoading === "join" ? "加入中..." : "加入房间"}
+                  {roomActionLoading === "join"
+                    ? t("加入中...", "Joining...")
+                    : t("加入房间", "Join Room")}
                 </button>
               </form>
             </div>
@@ -491,11 +520,11 @@ export default function DashboardPageClient({
             <details className="minimal-details">
               <summary>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>查看历史房间</span>
+                  <span>{t("查看历史房间", "Room History")}</span>
                   {isAuthenticated && (
                     <button
                       type="button"
-                      title="刷新历史"
+                      title={t("刷新历史", "Refresh history")}
                       style={{
                         padding: '4px',
                         background: 'transparent',
@@ -527,18 +556,23 @@ export default function DashboardPageClient({
               </summary>
               {!isAuthenticated ? (
                 <div className="details-content">
-                  <p className="panel-tip">登录后可查看你创建和参与的房间记录。</p>
+                  <p className="panel-tip">
+                    {t(
+                      "登录后可查看你创建和参与的房间记录。",
+                      "Sign in to view rooms you created or joined.",
+                    )}
+                  </p>
                 </div>
               ) : (
                 <div className="details-content room-history-details">
                   {!hasHistory ? (
-                    <p className="panel-tip">暂无历史房间。</p>
+                    <p className="panel-tip">{t("暂无历史房间。", "No room history yet.")}</p>
                   ) : (
                     <>
                       <div className="history-group">
-                        <h3>我创建的房间</h3>
+                        <h3>{t("我创建的房间", "Rooms I Created")}</h3>
                         {createdRooms.length === 0 ? (
-                          <p className="panel-tip">暂无记录。</p>
+                          <p className="panel-tip">{t("暂无记录。", "No records.")}</p>
                         ) : (
                           <ul className="room-list">
                             {createdRooms.map((room) => (
@@ -546,12 +580,15 @@ export default function DashboardPageClient({
                                 <div>
                                   <strong>{room.roomId}</strong>
                                   <p>
-                                    状态：{roomStatusLabel(room.status)} | 成员：{room.participantCount} | 消息：
-                                    {room.messageCount}
+                                    {t("状态", "Status")}: {roomStatusLabel(room.status, language)} |{" "}
+                                    {t("成员", "Members")}: {room.participantCount} |{" "}
+                                    {t("消息", "Messages")}: {room.messageCount}
                                   </p>
-                                  <p>创建：{formatDate(room.createdAt)}</p>
+                                  <p>
+                                    {t("创建", "Created")}: {formatDate(room.createdAt, language)}
+                                  </p>
                                 </div>
-                                <Link href={`/${encodeURIComponent(room.roomId)}`}>进入</Link>
+                                <Link href={`/${encodeURIComponent(room.roomId)}`}>{t("进入", "Open")}</Link>
                               </li>
                             ))}
                           </ul>
@@ -559,9 +596,9 @@ export default function DashboardPageClient({
                       </div>
 
                       <div className="history-group">
-                        <h3>我参与的房间</h3>
+                        <h3>{t("我参与的房间", "Rooms I Joined")}</h3>
                         {joinedRooms.length === 0 ? (
-                          <p className="panel-tip">暂无记录。</p>
+                          <p className="panel-tip">{t("暂无记录。", "No records.")}</p>
                         ) : (
                           <ul className="room-list">
                             {joinedRooms.map((room) => (
@@ -569,12 +606,16 @@ export default function DashboardPageClient({
                                 <div>
                                   <strong>{room.roomId}</strong>
                                   <p>
-                                    状态：{roomStatusLabel(room.status)} | 成员：{room.participantCount} | 消息：
-                                    {room.messageCount}
+                                    {t("状态", "Status")}: {roomStatusLabel(room.status, language)} |{" "}
+                                    {t("成员", "Members")}: {room.participantCount} |{" "}
+                                    {t("消息", "Messages")}: {room.messageCount}
                                   </p>
-                                  <p>最近加入：{formatDate(room.joinedAt ?? room.updatedAt)}</p>
+                                  <p>
+                                    {t("最近加入", "Last joined")}:{" "}
+                                    {formatDate(room.joinedAt ?? room.updatedAt, language)}
+                                  </p>
                                 </div>
-                                <Link href={`/${encodeURIComponent(room.roomId)}`}>进入</Link>
+                                <Link href={`/${encodeURIComponent(room.roomId)}`}>{t("进入", "Open")}</Link>
                               </li>
                             ))}
                           </ul>
@@ -587,21 +628,37 @@ export default function DashboardPageClient({
             </details>
 
             <details className="minimal-details">
-              <summary>配置 Provider Key</summary>
+              <summary>{t("配置 Provider Key", "Configure Provider Key")}</summary>
               {!isAuthenticated ? (
                 <div className="details-content">
-                  <p className="panel-tip">登录后可保存个人 LiveKit / Deepgram Key。</p>
+                  <p className="panel-tip">
+                    {t(
+                      "登录后可保存个人 LiveKit / Deepgram Key。",
+                      "Sign in to store your own LiveKit / Deepgram keys.",
+                    )}
+                  </p>
                 </div>
               ) : (
                 <div className="details-content">
                   <p className="panel-tip">
-                    当前状态：{keyStatus?.configured ? "已配置" : "未配置"}。仅保存到你的账户，不影响其他用户。
+                    {t("当前状态", "Current status")}:{" "}
+                    {keyStatus?.configured ? t("已配置", "Configured") : t("未配置", "Not configured")}。
+                    {t("仅保存到你的账户，不影响其他用户。", "Saved only to your account, without affecting other users.")}
                   </p>
                   <div className="key-status-grid">
-                    <span>LiveKit URL：{keyStatus?.livekitUrlMask ?? "未配置"}</span>
-                    <span>LiveKit API Key：{keyStatus?.livekitApiKeyMask ?? "未配置"}</span>
-                    <span>LiveKit API Secret：{keyStatus?.livekitApiSecretMask ?? "未配置"}</span>
-                    <span>Deepgram API Key：{keyStatus?.deepgramApiKeyMask ?? "未配置"}</span>
+                    <span>
+                      LiveKit URL: {keyStatus?.livekitUrlMask ?? t("未配置", "Not configured")}
+                    </span>
+                    <span>
+                      LiveKit API Key: {keyStatus?.livekitApiKeyMask ?? t("未配置", "Not configured")}
+                    </span>
+                    <span>
+                      LiveKit API Secret:{" "}
+                      {keyStatus?.livekitApiSecretMask ?? t("未配置", "Not configured")}
+                    </span>
+                    <span>
+                      Deepgram API Key: {keyStatus?.deepgramApiKeyMask ?? t("未配置", "Not configured")}
+                    </span>
                   </div>
                   <form className="key-form" onSubmit={handleKeySave}>
                     <input
@@ -609,7 +666,7 @@ export default function DashboardPageClient({
                       onChange={(event) =>
                         setKeyForm((current) => ({ ...current, livekitUrl: event.target.value }))
                       }
-                      placeholder="LIVEKIT_URL（可选）"
+                      placeholder={t("LIVEKIT_URL（可选）", "LIVEKIT_URL (optional)")}
                     />
                     <input
                       value={keyForm.livekitApiKey}
@@ -636,10 +693,10 @@ export default function DashboardPageClient({
                     />
                     <div className="key-form-actions">
                       <button type="submit" className="primary-btn" disabled={keyLoading}>
-                        {keyLoading ? "保存中..." : "保存 Key"}
+                        {keyLoading ? t("保存中...", "Saving...") : t("保存 Key", "Save Key")}
                       </button>
                       <button type="button" className="ghost-btn" disabled={keyLoading} onClick={() => void handleKeyClear()}>
-                        清空
+                        {t("清空", "Clear")}
                       </button>
                       <button
                         type="button"
@@ -647,7 +704,7 @@ export default function DashboardPageClient({
                         disabled={keyLoading}
                         onClick={() => void refreshKeyStatus().catch((error) => setKeyError((error as Error).message))}
                       >
-                        刷新状态
+                        {t("刷新状态", "Refresh status")}
                       </button>
                     </div>
                   </form>
@@ -672,7 +729,7 @@ export default function DashboardPageClient({
                   setAuthError("");
                 }}
               >
-                关闭
+                {t("关闭", "Close")}
               </button>
             </header>
 
@@ -682,21 +739,26 @@ export default function DashboardPageClient({
                 className={authMode === "login" ? "switch-btn active" : "switch-btn"}
                 onClick={() => setAuthMode("login")}
               >
-                登录
+                {t("登录", "Sign In")}
               </button>
               <button
                 type="button"
                 className={authMode === "register" ? "switch-btn active" : "switch-btn"}
                 onClick={() => setAuthMode("register")}
               >
-                注册
+                {t("注册", "Sign Up")}
               </button>
             </div>
 
-            {authNextPath ? <p className="panel-tip">登录后将继续访问：{authNextPath}</p> : null}
+            {authNextPath ? (
+              <p className="panel-tip">
+                {t("登录后将继续访问：", "After signing in, you will continue to: ")}
+                {authNextPath}
+              </p>
+            ) : null}
 
             <form className="auth-form modal-auth-form" onSubmit={handleAuthSubmit}>
-              <label htmlFor="auth-username">用户名</label>
+              <label htmlFor="auth-username">{t("用户名", "Username")}</label>
               <input
                 id="auth-username"
                 value={authForm.username}
@@ -706,11 +768,11 @@ export default function DashboardPageClient({
                     username: event.target.value,
                   }))
                 }
-                placeholder="3-32 位：小写字母/数字/_"
+                placeholder={t("3-32 位：小写字母/数字/_", "3-32 chars: lowercase letters/numbers/_")}
                 autoComplete="username"
               />
 
-              <label htmlFor="auth-password">密码</label>
+              <label htmlFor="auth-password">{t("密码", "Password")}</label>
               <input
                 id="auth-password"
                 type="password"
@@ -721,12 +783,12 @@ export default function DashboardPageClient({
                     password: event.target.value,
                   }))
                 }
-                placeholder="至少 6 位"
+                placeholder={t("至少 6 位", "At least 6 characters")}
                 autoComplete={authMode === "login" ? "current-password" : "new-password"}
               />
 
               <button type="submit" className="primary-btn" disabled={authLoading}>
-                {authLoading ? `${authTitle}中...` : authTitle}
+                {authLoading ? `${authTitle}${t("中...", "...")}` : authTitle}
               </button>
             </form>
 

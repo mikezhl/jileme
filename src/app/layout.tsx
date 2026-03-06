@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LiveKit Voice Room",
-  description: "Audio-only room chat with LiveKit Cloud transcription and PostgreSQL history.",
+  title: "急了么 Jileme",
+  description:
+    "一个实时的AI辩论/吵架辅助+分析+总结平台。A real-time AI voice room with transcription and analysis.",
 };
 
 export default function RootLayout({
@@ -23,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
