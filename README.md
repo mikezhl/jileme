@@ -1,4 +1,4 @@
-# Logicly.Chat(急了么)
+# Logicly Chat(急了么)
 
 A real-time AI debate/argument assist + analysis + summary platform, built with Next.js + LiveKit + Deepgram + PostgreSQL.
 

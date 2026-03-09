@@ -461,7 +461,7 @@ export default function DashboardPageClient({
         <section className="minimal-shell">
           <header className="minimal-header">
             <div>
-              <h1>{t("急了么？", "Logicly.Chat")}</h1>
+              <h1>{t("急了么？", "Logicly Chat")}</h1>
               <p className="subtitle">{heroSubtitle}</p>
             </div>
             <div className="header-actions">
