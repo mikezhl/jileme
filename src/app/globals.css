@@ -25,6 +25,11 @@
   box-sizing: border-box;
 }
 
+html {
+  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
+}
+
 body {
   margin: 0;
   color: var(--foreground);
