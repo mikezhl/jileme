@@ -11,7 +11,7 @@ const IV_BYTE_LENGTH = 12;
 export type KeySource = "user" | "system" | "unavailable";
 
 export type UserKeyPayload = {
-  livekitUrl?: string;
+  livekitUrl: string;
   livekitApiKey: string;
   livekitApiSecret: string;
   deepgramApiKey: string;
@@ -34,6 +34,20 @@ export type ResolvedProviderCredentials = {
   deepgramSource: KeySource;
   livekitApiKeyMask: string | null;
   deepgramApiKeyMask: string | null;
+};
+
+type NormalizedUserKeys = {
+  livekitUrl: string | null;
+  livekitApiKey: string | null;
+  livekitApiSecret: string | null;
+  deepgramApiKey: string | null;
+};
+
+type CompleteUserKeys = {
+  livekitUrl: string;
+  livekitApiKey: string;
+  livekitApiSecret: string;
+  deepgramApiKey: string;
 };
 
 function getEncryptionKey() {
@@ -90,6 +104,32 @@ export function maskSecret(value?: string | null) {
   return `${value.slice(0, 2)}***${value.slice(-2)}`;
 }
 
+function normalizeUserKeys(payload: {
+  livekitUrl?: string | null;
+  livekitApiKey?: string | null;
+  livekitApiSecret?: string | null;
+  deepgramApiKey?: string | null;
+}): NormalizedUserKeys {
+  return {
+    livekitUrl: normalizeSecret(payload.livekitUrl),
+    livekitApiKey: normalizeSecret(payload.livekitApiKey),
+    livekitApiSecret: normalizeSecret(payload.livekitApiSecret),
+    deepgramApiKey: normalizeSecret(payload.deepgramApiKey),
+  };
+}
+
+function hasAnyUserKeyValue(keys: NormalizedUserKeys) {
+  return Boolean(
+    keys.livekitUrl || keys.livekitApiKey || keys.livekitApiSecret || keys.deepgramApiKey,
+  );
+}
+
+function hasCompleteUserKeySet(keys: NormalizedUserKeys): keys is CompleteUserKeys {
+  return Boolean(
+    keys.livekitUrl && keys.livekitApiKey && keys.livekitApiSecret && keys.deepgramApiKey,
+  );
+}
+
 function toUserKeyStatus(record: UserProviderKeys | null): UserKeyStatus {
   if (!record) {
     return {
@@ -101,17 +141,19 @@ function toUserKeyStatus(record: UserProviderKeys | null): UserKeyStatus {
     };
   }
 
-  const livekitUrl = decryptOptional(record.livekitUrlEncrypted);
-  const livekitApiKey = decryptOptional(record.livekitApiKeyEncrypted);
-  const livekitApiSecret = decryptOptional(record.livekitApiSecretEncrypted);
-  const deepgramApiKey = decryptOptional(record.deepgramApiKeyEncrypted);
+  const normalizedKeys = normalizeUserKeys({
+    livekitUrl: decryptOptional(record.livekitUrlEncrypted),
+    livekitApiKey: decryptOptional(record.livekitApiKeyEncrypted),
+    livekitApiSecret: decryptOptional(record.livekitApiSecretEncrypted),
+    deepgramApiKey: decryptOptional(record.deepgramApiKeyEncrypted),
+  });
 
   return {
-    configured: Boolean(livekitApiKey && livekitApiSecret && deepgramApiKey),
-    livekitUrlMask: maskSecret(livekitUrl),
-    livekitApiKeyMask: maskSecret(livekitApiKey),
-    livekitApiSecretMask: maskSecret(livekitApiSecret),
-    deepgramApiKeyMask: maskSecret(deepgramApiKey),
+    configured: hasCompleteUserKeySet(normalizedKeys),
+    livekitUrlMask: maskSecret(normalizedKeys.livekitUrl),
+    livekitApiKeyMask: maskSecret(normalizedKeys.livekitApiKey),
+    livekitApiSecretMask: maskSecret(normalizedKeys.livekitApiSecret),
+    deepgramApiKeyMask: maskSecret(normalizedKeys.deepgramApiKey),
   };
 }
 
@@ -130,34 +172,27 @@ export async function upsertUserKeys(userId: string, payload: UserKeyPayload | n
     return getUserKeyStatus(userId);
   }
 
-  const livekitUrl = normalizeSecret(payload.livekitUrl);
-  const livekitApiKey = normalizeSecret(payload.livekitApiKey);
-  const livekitApiSecret = normalizeSecret(payload.livekitApiSecret);
-  const deepgramApiKey = normalizeSecret(payload.deepgramApiKey);
-  const mode = getUserProviderKeysMode();
-
-  if (!livekitApiKey || !livekitApiSecret || !deepgramApiKey) {
-    throw new Error("livekitApiKey, livekitApiSecret and deepgramApiKey are required");
-  }
-
-  if (mode === "full" && !livekitUrl) {
-    throw new Error("livekitUrl is required when USER_PROVIDER_KEYS_MODE=full");
+  const normalizedKeys = normalizeUserKeys(payload);
+  if (!hasCompleteUserKeySet(normalizedKeys)) {
+    throw new Error(
+      "livekitUrl, livekitApiKey, livekitApiSecret and deepgramApiKey are required",
+    );
   }
 
   await prisma.userProviderKeys.upsert({
     where: { userId },
     create: {
       userId,
-      livekitUrlEncrypted: livekitUrl ? encryptValue(livekitUrl) : null,
-      livekitApiKeyEncrypted: encryptValue(livekitApiKey),
-      livekitApiSecretEncrypted: encryptValue(livekitApiSecret),
-      deepgramApiKeyEncrypted: encryptValue(deepgramApiKey),
+      livekitUrlEncrypted: encryptValue(normalizedKeys.livekitUrl),
+      livekitApiKeyEncrypted: encryptValue(normalizedKeys.livekitApiKey),
+      livekitApiSecretEncrypted: encryptValue(normalizedKeys.livekitApiSecret),
+      deepgramApiKeyEncrypted: encryptValue(normalizedKeys.deepgramApiKey),
     },
     update: {
-      livekitUrlEncrypted: livekitUrl ? encryptValue(livekitUrl) : null,
-      livekitApiKeyEncrypted: encryptValue(livekitApiKey),
-      livekitApiSecretEncrypted: encryptValue(livekitApiSecret),
-      deepgramApiKeyEncrypted: encryptValue(deepgramApiKey),
+      livekitUrlEncrypted: encryptValue(normalizedKeys.livekitUrl),
+      livekitApiKeyEncrypted: encryptValue(normalizedKeys.livekitApiKey),
+      livekitApiSecretEncrypted: encryptValue(normalizedKeys.livekitApiSecret),
+      deepgramApiKeyEncrypted: encryptValue(normalizedKeys.deepgramApiKey),
     },
   });
 
@@ -183,6 +218,14 @@ export async function resolveProviderCredentialsForOwner(
   let deepgramApiKey = defaultDeepgramApiKey;
   let livekitSource: KeySource = canUseSystemKeys ? "system" : "unavailable";
   let deepgramSource: KeySource = defaultDeepgramApiKey ? "system" : "unavailable";
+  const setCredentialsUnavailable = () => {
+    livekitUrl = null;
+    livekitApiKey = null;
+    livekitApiSecret = null;
+    deepgramApiKey = null;
+    livekitSource = "unavailable";
+    deepgramSource = "unavailable";
+  };
 
   if (canUseUserKeys && ownerUserId) {
     const record = await prisma.userProviderKeys.findUnique({
@@ -191,31 +234,34 @@ export async function resolveProviderCredentialsForOwner(
 
     if (record) {
       try {
-        const userLivekitUrl = normalizeSecret(decryptOptional(record.livekitUrlEncrypted));
-        const userLivekitApiKey = normalizeSecret(decryptOptional(record.livekitApiKeyEncrypted));
-        const userLivekitApiSecret = normalizeSecret(
-          decryptOptional(record.livekitApiSecretEncrypted),
-        );
-        const userDeepgramApiKey = normalizeSecret(decryptOptional(record.deepgramApiKeyEncrypted));
+        const userKeys = normalizeUserKeys({
+          livekitUrl: decryptOptional(record.livekitUrlEncrypted),
+          livekitApiKey: decryptOptional(record.livekitApiKeyEncrypted),
+          livekitApiSecret: decryptOptional(record.livekitApiSecretEncrypted),
+          deepgramApiKey: decryptOptional(record.deepgramApiKeyEncrypted),
+        });
 
-        if (userLivekitUrl && userLivekitApiKey && userLivekitApiSecret) {
-          livekitUrl = userLivekitUrl;
-          livekitApiKey = userLivekitApiKey;
-          livekitApiSecret = userLivekitApiSecret;
+        if (hasCompleteUserKeySet(userKeys)) {
+          livekitUrl = userKeys.livekitUrl;
+          livekitApiKey = userKeys.livekitApiKey;
+          livekitApiSecret = userKeys.livekitApiSecret;
+          deepgramApiKey = userKeys.deepgramApiKey;
           livekitSource = "user";
-        } else if (!canUseSystemKeys) {
-          livekitUrl = null;
-          livekitApiKey = null;
-          livekitApiSecret = null;
-          livekitSource = "unavailable";
-        }
-
-        if (userDeepgramApiKey) {
-          deepgramApiKey = userDeepgramApiKey;
           deepgramSource = "user";
+        } else if (hasAnyUserKeyValue(userKeys)) {
+          console.warn("Ignoring incomplete user provider keys", {
+            ownerUserId,
+            mode,
+            hasLivekitUrl: Boolean(userKeys.livekitUrl),
+            hasLivekitApiKey: Boolean(userKeys.livekitApiKey),
+            hasLivekitApiSecret: Boolean(userKeys.livekitApiSecret),
+            hasDeepgramApiKey: Boolean(userKeys.deepgramApiKey),
+          });
+          if (!canUseSystemKeys) {
+            setCredentialsUnavailable();
+          }
         } else if (!canUseSystemKeys) {
-          deepgramApiKey = null;
-          deepgramSource = "unavailable";
+          setCredentialsUnavailable();
         }
       } catch (error) {
         console.error("Failed to decrypt user provider keys", {
@@ -225,21 +271,11 @@ export async function resolveProviderCredentialsForOwner(
         });
 
         if (!canUseSystemKeys) {
-          livekitUrl = null;
-          livekitApiKey = null;
-          livekitApiSecret = null;
-          deepgramApiKey = null;
-          livekitSource = "unavailable";
-          deepgramSource = "unavailable";
+          setCredentialsUnavailable();
         }
       }
     } else if (!canUseSystemKeys) {
-      livekitUrl = null;
-      livekitApiKey = null;
-      livekitApiSecret = null;
-      deepgramApiKey = null;
-      livekitSource = "unavailable";
-      deepgramSource = "unavailable";
+      setCredentialsUnavailable();
     }
   }
 

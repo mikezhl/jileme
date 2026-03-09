@@ -13,10 +13,6 @@ type SaveKeysRequest = {
 
 export const runtime = "nodejs";
 
-function isBlank(value?: string | null) {
-  return !value || value.trim().length === 0;
-}
-
 export async function GET() {
   try {
     const { user, unauthorizedResponse } = await requireApiUser();
@@ -40,21 +36,15 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as SaveKeysRequest;
-    const clearRequested =
-      body.clear === true ||
-      (isBlank(body.livekitUrl) &&
-        isBlank(body.livekitApiKey) &&
-        isBlank(body.livekitApiSecret) &&
-        isBlank(body.deepgramApiKey));
-
-    const status = clearRequested
-      ? await upsertUserKeys(user.id, null)
-      : await upsertUserKeys(user.id, {
-          livekitUrl: body.livekitUrl,
-          livekitApiKey: body.livekitApiKey?.trim() ?? "",
-          livekitApiSecret: body.livekitApiSecret?.trim() ?? "",
-          deepgramApiKey: body.deepgramApiKey?.trim() ?? "",
-        });
+    const status =
+      body.clear === true
+        ? await upsertUserKeys(user.id, null)
+        : await upsertUserKeys(user.id, {
+            livekitUrl: body.livekitUrl?.trim() ?? "",
+            livekitApiKey: body.livekitApiKey?.trim() ?? "",
+            livekitApiSecret: body.livekitApiSecret?.trim() ?? "",
+            deepgramApiKey: body.deepgramApiKey?.trim() ?? "",
+          });
 
     return NextResponse.json({ status });
   } catch (error) {

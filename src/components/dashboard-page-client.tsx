@@ -94,6 +94,10 @@ function normalizeNextPath(raw: string | null | undefined) {
   return raw;
 }
 
+function isBlank(value: string) {
+  return value.trim().length === 0;
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialCreatedRooms,
@@ -365,6 +369,21 @@ export default function DashboardPageClient({
     event.preventDefault();
     if (!isAuthenticated) {
       openAuthModal("login");
+      return;
+    }
+
+    if (
+      isBlank(keyForm.livekitUrl) ||
+      isBlank(keyForm.livekitApiKey) ||
+      isBlank(keyForm.livekitApiSecret) ||
+      isBlank(keyForm.deepgramApiKey)
+    ) {
+      setKeyError(
+        t(
+          "保存时必须同时填写 LiveKit URL、LiveKit API Key、LiveKit API Secret 和 Deepgram API Key。清空请点击“清空”。",
+          'LiveKit URL, LiveKit API Key, LiveKit API Secret, and Deepgram API Key are all required. Use "Clear" to remove saved keys.',
+        ),
+      );
       return;
     }
 
@@ -657,7 +676,10 @@ export default function DashboardPageClient({
                   <p className="panel-tip">
                     {t("当前状态", "Current status")}:{" "}
                     {keyStatus?.configured ? t("已配置", "Configured") : t("未配置", "Not configured")}。
-                    {t("仅保存到你的账户，不影响其他用户。", "Saved only to your account, without affecting other users.")}
+                    {t(
+                      "仅保存到你的账户，不影响其他用户。保存时四项必须同时填写；若要删除，请点击“清空”。",
+                      'Saved only to your account, without affecting other users. All four fields are required when saving; use "Clear" to remove them.',
+                    )}
                   </p>
                   <div className="key-status-grid">
                     <span>
@@ -680,7 +702,7 @@ export default function DashboardPageClient({
                       onChange={(event) =>
                         setKeyForm((current) => ({ ...current, livekitUrl: event.target.value }))
                       }
-                      placeholder={t("LIVEKIT_URL（可选）", "LIVEKIT_URL (optional)")}
+                      placeholder={t("LIVEKIT_URL（必填）", "LIVEKIT_URL (required)")}
                     />
                     <input
                       value={keyForm.livekitApiKey}
