@@ -23,7 +23,10 @@ function isChatMessage(value: unknown): value is ChatMessage {
 
   return (
     typeof value.id === "string" &&
-    (value.type === "text" || value.type === "transcript") &&
+    (value.type === "text" ||
+      value.type === "transcript" ||
+      value.type === "analysis" ||
+      value.type === "summary") &&
     typeof value.senderName === "string" &&
     (value.participantId === null || typeof value.participantId === "string") &&
     typeof value.content === "string" &&

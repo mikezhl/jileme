@@ -1,13 +1,13 @@
 import { RoomStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 
+import { isTranscriberEnabled } from "@/features/transcription/service/livekit-dispatch";
+import { ensureTranscriberWorker } from "@/features/transcription/runtime/worker-manager";
 import { requireApiUser } from "@/lib/auth-guard";
 import { getUserProviderKeysMode } from "@/lib/env";
-import { isTranscriberEnabled } from "@/lib/livekit-transcriber-dispatch";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
-import { ensureTranscriberWorker } from "@/lib/transcriber-worker-manager";
 
 export const runtime = "nodejs";
 

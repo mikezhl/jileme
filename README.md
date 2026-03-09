@@ -1,4 +1,4 @@
-# Jileme(急了么)
+# Logicly.Chat(急了么)
 
 A real-time AI debate/argument assist + analysis + summary platform, built with Next.js + LiveKit + Deepgram + PostgreSQL.
 
@@ -7,6 +7,7 @@ A real-time AI debate/argument assist + analysis + summary platform, built with 
 - User registration/login, room create/join, real-time voice communication, and text transcription
 - Room creators can end a conversation; ended rooms become read-only (history visible, no more text/voice input)
 - User-owned LiveKit/Deepgram keys are supported and stored encrypted in PostgreSQL
+- Realtime AI analysis announcements and end-of-room AI summary (LLM mock provider by default)
 
 ## Environment Variables
 
@@ -22,13 +23,17 @@ Key settings:
   - Used as system keys when `USER_PROVIDER_KEYS_MODE=false/true`
 - `APP_ENCRYPTION_SECRET`
   - Used to encrypt user keys; must be a strong random string
+- `CONVERSATION_LLM_PROVIDER`
+  - `mock | real` (default `mock`; `real` provider placeholder for future implementation)
+- `CONVERSATION_REALTIME_PROMPT_STYLE / CONVERSATION_SUMMARY_PROMPT_STYLE`
+  - Select prompt style profiles for realtime analysis and final summary modes
 
 ## Local Development
 
 ```bash
 pnpm install
 pnpm prisma generate
-pnpm prisma migrate dev
+pnpm prisma db push --accept-data-loss
 pnpm dev
 ```
 
@@ -37,6 +42,8 @@ Dynamic worker behavior (enabled by default):
 - Entering a room triggers a background warmup for the matching LiveKit transcriber worker
 - Clicking "Start Voice" ensures worker readiness before token + dispatch
 - If `LIVEKIT_TRANSCRIBER_ENABLED=false`, warmup/worker startup and transcription dispatch are skipped
+- Text/transcript messages are enqueued into a shared analysis queue and consumed by a cross-room analysis worker
+- Realtime analysis trigger uses debounce (`ANALYZER_REALTIME_DEBOUNCE_MS`, default 10000ms)
 
 ---
 
@@ -71,7 +78,7 @@ Dynamic worker behavior (enabled by default):
 ```bash
 pnpm install
 pnpm prisma generate
-pnpm prisma migrate dev
+pnpm prisma db push --accept-data-loss
 pnpm dev
 ```
 

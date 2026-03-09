@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -72,7 +72,7 @@ type RoomMetaState = {
 
 function formatDate(value: string | null, language: UiLanguage) {
   if (!value) {
-    return language === "zh" ? "无" : "N/A";
+    return language === "zh" ? "暂无" : "N/A";
   }
 
   const date = new Date(value);
@@ -113,6 +113,10 @@ function mergeMessages(existing: ChatMessage[], incoming: ChatMessage[]) {
 }
 
 function isOwnMessage(message: ChatMessage, participantId: string, username: string) {
+  if (message.type === "analysis" || message.type === "summary") {
+    return false;
+  }
+
   if (message.senderName === username) {
     return true;
   }
@@ -125,17 +129,15 @@ function isOwnMessage(message: ChatMessage, participantId: string, username: str
 }
 
 export default function RoomPageClient({ roomId, username }: RoomPageClientProps) {
-  const { language, setLanguage } = useUiLanguage();
+  const { language } = useUiLanguage();
   const isZh = language === "zh";
   const t = useCallback((zh: string, en: string) => (isZh ? zh : en), [isZh]);
-  const toggleLanguage = useCallback(() => {
-    setLanguage(isZh ? "en" : "zh");
-  }, [isZh, setLanguage]);
 
   const roomRef = useRef<Room | null>(null);
   const audioContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const warmupRequestedRef = useRef(false);
+  const autoConnectAttemptedRef = useRef(false);
   const connectStartedAtRef = useRef<number | null>(null);
   const latestMessageCreatedAtRef = useRef<string | null>(null);
 
@@ -233,21 +235,26 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     [roomId, t, upsertMessages],
   );
 
-  const connectRoom = useCallback(async () => {
+  const connectRoom = useCallback(async (options?: { enableMicrophone?: boolean }) => {
+    const enableMicrophone = options?.enableMicrophone ?? false;
+
     if (connectionState !== "disconnected" || roomMeta.status === "ENDED") {
       return;
     }
 
     setRoomError("");
     setConnectionState("connecting");
-    setTranscriptionState("starting");
+    setTranscriptionState(enableMicrophone ? "starting" : "idle");
     connectStartedAtRef.current = Date.now();
 
     try {
       const tokenRes = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId }),
+        body: JSON.stringify({
+          roomId,
+          connectionMode: enableMicrophone ? "voice" : "data",
+        }),
       });
       const tokenPayload = (await tokenRes.json()) as TokenResponse;
       if (!tokenRes.ok) {
@@ -309,21 +316,25 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
       await room.connect(tokenPayload.livekitUrl, tokenPayload.token);
       await room.localParticipant.setCameraEnabled(false);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      await room.localParticipant.setMicrophoneEnabled(enableMicrophone);
 
-      if (!tokenPayload.transcriberEnabled) {
-        setTranscriptionState("disabled");
-      } else if (
-        [...room.remoteParticipants.values()].some(
-          (participant) => participant.kind === ParticipantKind.AGENT,
-        )
-      ) {
-        markTranscriptionReady();
+      if (enableMicrophone) {
+        if (!tokenPayload.transcriberEnabled) {
+          setTranscriptionState("disabled");
+        } else if (
+          [...room.remoteParticipants.values()].some(
+            (participant) => participant.kind === ParticipantKind.AGENT,
+          )
+        ) {
+          markTranscriptionReady();
+        }
+      } else {
+        setTranscriptionState("idle");
       }
 
       roomRef.current = room;
       setParticipantId(tokenPayload.identity);
-      setMicEnabled(true);
+      setMicEnabled(enableMicrophone);
       setConnectionState("connected");
       void fetchMessages(latestMessageCreatedAtRef.current).catch(() => undefined);
     } catch (error) {
@@ -342,6 +353,36 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     upsertMessages,
   ]);
 
+  const ensureVoiceRuntime = useCallback(async () => {
+    const tokenRes = await fetch("/api/livekit/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roomId,
+        connectionMode: "voice",
+      }),
+    });
+    const tokenPayload = (await tokenRes.json()) as TokenResponse;
+    if (!tokenRes.ok) {
+      throw new Error(
+        tokenPayload.error ?? t("启动语音通道失败", "Failed to prepare voice runtime"),
+      );
+    }
+
+    setRoomMeta((current) => ({
+      ...current,
+      keyMasks: tokenPayload.keyMasks,
+      keySources: tokenPayload.keySources,
+    }));
+
+    if (!tokenPayload.transcriberEnabled) {
+      setTranscriptionState("disabled");
+      return;
+    }
+
+    setTranscriptionState((current) => (current === "ready" ? current : "starting"));
+  }, [roomId, t]);
+
   const toggleMic = useCallback(async () => {
     if (!roomRef.current || connectionState !== "connected") {
       return;
@@ -349,12 +390,16 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
     const nextMicState = !micEnabled;
     try {
+      if (nextMicState) {
+        await ensureVoiceRuntime();
+      }
+
       await roomRef.current.localParticipant.setMicrophoneEnabled(nextMicState);
       setMicEnabled(nextMicState);
     } catch (error) {
       setRoomError(error instanceof Error ? error.message : t("切换麦克风失败", "Failed to toggle microphone"));
     }
-  }, [connectionState, micEnabled, t]);
+  }, [connectionState, ensureVoiceRuntime, micEnabled, t]);
 
   async function endConversation() {
     if (!roomMeta.isCreator || roomMeta.status === "ENDED") {
@@ -381,6 +426,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         endedAt: payload.room!.endedAt,
       }));
       disconnectRoom();
+      void fetchMessages(latestMessageCreatedAtRef.current).catch(() => undefined);
     } catch (error) {
       setRoomError(error instanceof Error ? error.message : t("结束房间失败", "Failed to end room"));
     } finally {
@@ -425,6 +471,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   }
 
   useEffect(() => {
+    autoConnectAttemptedRef.current = false;
     latestMessageCreatedAtRef.current = null;
     setMessages([]);
     setRoomError("");
@@ -438,6 +485,21 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       disconnectRoom();
     }
   }, [connectionState, disconnectRoom, roomMeta.status]);
+
+  useEffect(() => {
+    if (autoConnectAttemptedRef.current) {
+      return;
+    }
+    if (roomMeta.status === "ENDED") {
+      return;
+    }
+    if (connectionState !== "disconnected") {
+      return;
+    }
+
+    autoConnectAttemptedRef.current = true;
+    void connectRoom({ enableMicrophone: false });
+  }, [connectRoom, connectionState, roomMeta.status]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -508,7 +570,9 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               <h1 style={{ fontSize: '1.5rem', margin: 0 }}>{roomId}</h1>
               <span className={`room-status ${connectionState}`}>
                 {connectionState === "connected"
-                  ? t("通话中", "In Call")
+                  ? micEnabled
+                    ? t("通话中", "In Call")
+                    : t("已连接", "Connected")
                   : connectionState === "connecting"
                     ? t("连接中", "Connecting")
                     : t("未开始", "Not Started")}
@@ -545,14 +609,6 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
             </p>
           </div>
           <div className="room-actions">
-            <button
-              type="button"
-              className="ghost-btn lang-toggle-btn"
-              aria-label={t("切换语言", "Switch language")}
-              onClick={toggleLanguage}
-            >
-              {isZh ? "EN" : "中文"}
-            </button>
             <Link className="text-link-button" style={{ height: '40px' }} href="/">
               {t("返回", "Back")}
             </Link>
@@ -576,16 +632,28 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               <p className="empty-chat">{t("暂无历史消息。", "No message history yet.")}</p>
             ) : (
               messages.map((message) => {
-                const own = isOwnMessage(message, participantId, username);
+                const announcement = message.type === "analysis" || message.type === "summary";
+                const own = announcement ? false : isOwnMessage(message, participantId, username);
                 return (
-                  <div key={message.id} className={`message-row ${own ? "self" : "other"}`}>
-                    <article className={`bubble ${message.type} ${own ? "self" : "other"}`}>
+                  <div
+                    key={message.id}
+                    className={`message-row ${announcement ? "announcement" : own ? "self" : "other"}`}
+                  >
+                    <article
+                      className={`bubble ${message.type} ${announcement ? "announcement" : own ? "self" : "other"}`}
+                    >
                       <header className="bubble-meta">
-                        <strong>{own ? t("我", "Me") : message.senderName}</strong>
+                        <strong>
+                          {announcement ? t("AI 分析", "AI Analysis") : own ? t("我", "Me") : message.senderName}
+                        </strong>
                         <span className={`bubble-source ${message.type}`}>
                           {message.type === "transcript"
-                            ? t("语音转写", "Transcript")
-                            : t("文字消息", "Text")}
+                            ? t("语音转录", "Transcript")
+                            : message.type === "text"
+                              ? t("文字消息", "Text")
+                              : message.type === "analysis"
+                                ? t("实时分析", "Realtime Analysis")
+                                : t("最终总结", "Final Summary")}
                         </span>
                         <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
                       </header>
@@ -611,7 +679,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
             disabled={isEnded}
           />
           <button type="submit" className="primary-btn" disabled={sendingText || isEnded}>
-            {sendingText ? t("发送中", "Sending") : t("发送文字", "Send")}
+            {sendingText ? t("发送中", "Sending") : t("发送", "Send")}
           </button>
           
           {connectionState === "connected" ? (
@@ -624,7 +692,12 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               </button>
             </>
           ) : (
-            <button type="button" className="ghost-btn" onClick={connectRoom} disabled={connectionState === "connecting" || isEnded}>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => void connectRoom({ enableMicrophone: true })}
+              disabled={connectionState === "connecting" || isEnded}
+            >
               {connectionState === "connecting"
                 ? t("连接中...", "Connecting...")
                 : t("开启语音", "Start Voice")}
@@ -637,3 +710,4 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     </main>
   );
 }
+

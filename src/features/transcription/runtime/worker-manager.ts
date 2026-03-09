@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { LivekitDispatchCredentials } from "@/lib/livekit-transcriber-dispatch";
+import { LivekitDispatchCredentials } from "@/features/transcription/service/livekit-dispatch";
 
 type WorkerState = "starting" | "ready" | "failed";
 
@@ -76,7 +76,7 @@ function getSpawnCommandAndArgs() {
   if (fs.existsSync(localTsxCli)) {
     return {
       command: process.execPath,
-      args: [localTsxCli, "src/agents/deepgram-transcriber-agent.ts", "dev"],
+      args: [localTsxCli, "src/features/transcription/agent/deepgram-transcriber-agent.ts", "dev"],
     };
   }
 
@@ -84,13 +84,19 @@ function getSpawnCommandAndArgs() {
   if (npmExecPath) {
     return {
       command: process.execPath,
-      args: [npmExecPath, "exec", "tsx", "src/agents/deepgram-transcriber-agent.ts", "dev"],
+      args: [
+        npmExecPath,
+        "exec",
+        "tsx",
+        "src/features/transcription/agent/deepgram-transcriber-agent.ts",
+        "dev",
+      ],
     };
   }
 
   return {
     command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-    args: ["exec", "tsx", "src/agents/deepgram-transcriber-agent.ts", "dev"],
+    args: ["exec", "tsx", "src/features/transcription/agent/deepgram-transcriber-agent.ts", "dev"],
   };
 }
 

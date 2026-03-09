@@ -105,8 +105,14 @@ a:focus-visible {
   margin-top: 12px;
 }
 
+.header-actions .primary-btn,
+.header-actions .ghost-btn,
+.header-actions .text-link-button {
+  height: 44px;
+}
+
 .lang-toggle-btn {
-  height: 40px;
+  height: 44px;
   min-width: 68px;
   padding: 0 14px;
   font-size: 0.85rem;
@@ -826,6 +832,10 @@ a:focus-visible {
   justify-content: flex-end;
 }
 
+.message-row.announcement {
+  justify-content: center;
+}
+
 /* Flat Chat Bubbles */
 .bubble {
   width: fit-content;
@@ -852,6 +862,26 @@ a:focus-visible {
   background: var(--primary);
   color: var(--text-on-primary);
   border: 1px solid var(--primary);
+}
+
+.bubble.announcement {
+  width: min(92%, 760px);
+  max-width: min(92%, 760px);
+  border: 1px solid #e6d38a;
+  background: #fff9e7;
+  color: #4b3b12;
+}
+
+.bubble.summary.announcement {
+  border-color: #9fd5cf;
+  background: #f0fffc;
+  color: #0f4f47;
+}
+
+.bubble.announcement p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .bubble.transcript.other {
@@ -896,6 +926,16 @@ a:focus-visible {
 .bubble.self .bubble-source {
   background: rgba(255, 255, 255, 0.2);
   color: var(--text-on-primary);
+}
+
+.bubble-source.analysis {
+  background: #fde68a;
+  color: #78350f;
+}
+
+.bubble-source.summary {
+  background: #bfdbfe;
+  color: #1e3a8a;
 }
 
 .chat-form.room-chat-form {

@@ -10,6 +10,13 @@ datasource db {
 enum MessageType {
   TEXT
   TRANSCRIPT
+  AI_ANALYSIS
+  AI_SUMMARY
+}
+
+enum AnalysisEventType {
+  REALTIME_TRIGGER
+  FINAL_SUMMARY_TRIGGER
 }
 
 enum RoomStatus {
@@ -28,6 +35,8 @@ model Room {
   updatedAt    DateTime          @updatedAt
   messages     Message[]
   participants RoomParticipant[]
+  analysisEvents RoomAnalysisEvent[]
+  analysisState  RoomAnalysisState?
 }
 
 model Message {
@@ -94,4 +103,28 @@ model UserProviderKeys {
   deepgramApiKeyEncrypted  String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
+}
+
+model RoomAnalysisEvent {
+  id         String            @id @default(cuid())
+  roomRefId  String
+  room       Room              @relation(fields: [roomRefId], references: [id], onDelete: Cascade)
+  eventType  AnalysisEventType
+  messageId  String?
+  dedupeKey  String            @unique
+  createdAt  DateTime          @default(now())
+  processedAt DateTime?
+
+  @@index([processedAt, createdAt])
+  @@index([roomRefId, createdAt])
+}
+
+model RoomAnalysisState {
+  roomRefId            String   @id
+  room                 Room     @relation(fields: [roomRefId], references: [id], onDelete: Cascade)
+  lastRealtimeMessageAt DateTime?
+  lastRealtimeMessageId String?
+  lastFinalSummaryAt    DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }

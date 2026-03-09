@@ -1,6 +1,13 @@
 import { MessageType } from "@prisma/client";
 import { NextResponse } from "next/server";
 
+import { enqueueRealtimeAnalysisEvent } from "@/features/analysis/service/analysis-events";
+import {
+  formatCompactAnalysisError,
+  getAnalysisSchemaFixHint,
+  isAnalysisSchemaMissingError,
+} from "@/features/analysis/service/analysis-errors";
+import { ensureConversationAnalysisWorker } from "@/features/analysis/runtime/worker-manager";
 import { requireApiUser } from "@/lib/auth-guard";
 import { toChatMessage } from "@/lib/messages";
 import { prisma } from "@/lib/prisma";
@@ -66,6 +73,16 @@ export async function POST(request: Request, context: RouteContext) {
     assertRoomNotEnded(room.status);
     const persisted = [];
 
+    void ensureConversationAnalysisWorker({
+      waitForReady: false,
+      reason: `transcriptions-route:${roomId}`,
+    }).catch((workerError) => {
+      console.warn("Failed to ensure conversation analysis worker", {
+        roomId,
+        error: workerError instanceof Error ? workerError.message : workerError,
+      });
+    });
+
     for (const segment of segments) {
       if (segment.final === false) {
         continue;
@@ -97,6 +114,24 @@ export async function POST(request: Request, context: RouteContext) {
         });
 
         persisted.push(message);
+        try {
+          await enqueueRealtimeAnalysisEvent(room.id, message.id);
+        } catch (enqueueError) {
+          if (isAnalysisSchemaMissingError(enqueueError)) {
+            console.warn("Analysis queue unavailable while enqueuing transcription", {
+              roomId,
+              messageId: message.id,
+              hint: getAnalysisSchemaFixHint(),
+              error: formatCompactAnalysisError(enqueueError),
+            });
+          } else {
+            console.warn("Failed to enqueue transcription analysis event", {
+              roomId,
+              messageId: message.id,
+              error: formatCompactAnalysisError(enqueueError),
+            });
+          }
+        }
       } else {
         const message = await prisma.message.create({
           data: {
@@ -108,6 +143,24 @@ export async function POST(request: Request, context: RouteContext) {
           },
         });
         persisted.push(message);
+        try {
+          await enqueueRealtimeAnalysisEvent(room.id, message.id);
+        } catch (enqueueError) {
+          if (isAnalysisSchemaMissingError(enqueueError)) {
+            console.warn("Analysis queue unavailable while enqueuing transcription", {
+              roomId,
+              messageId: message.id,
+              hint: getAnalysisSchemaFixHint(),
+              error: formatCompactAnalysisError(enqueueError),
+            });
+          } else {
+            console.warn("Failed to enqueue transcription analysis event", {
+              roomId,
+              messageId: message.id,
+              error: formatCompactAnalysisError(enqueueError),
+            });
+          }
+        }
       }
     }
 

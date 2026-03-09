@@ -7,7 +7,7 @@ import { optionalEnv } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_COOKIE_NAME = "jileme_session";
-const DEFAULT_SESSION_TTL_HOURS = 24 * 7;
+const DEFAULT_SESSION_TTL_HOURS = 24;
 
 function getSessionTtlHours() {
   const raw = optionalEnv("SESSION_TTL_HOURS");

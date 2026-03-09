@@ -2,19 +2,24 @@ import { RoomStatus } from "@prisma/client";
 import { AccessToken } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
 
+import { ensureConversationAnalysisWorker } from "@/features/analysis/runtime/worker-manager";
+import {
+  ensureTranscriberDispatch,
+  isTranscriberEnabled,
+} from "@/features/transcription/service/livekit-dispatch";
+import { ensureTranscriberWorker } from "@/features/transcription/runtime/worker-manager";
 import { requireApiUser } from "@/lib/auth-guard";
 import { optionalEnv } from "@/lib/env";
-import { ensureTranscriberDispatch, isTranscriberEnabled } from "@/lib/livekit-transcriber-dispatch";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 import { prisma } from "@/lib/prisma";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
-import { ensureTranscriberWorker } from "@/lib/transcriber-worker-manager";
 
 export const runtime = "nodejs";
 
 type TokenRequest = {
   roomId?: string;
+  connectionMode?: "data" | "voice";
 };
 
 export async function POST(request: Request) {
@@ -26,6 +31,8 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as TokenRequest;
     const roomId = normalizeRoomId(body?.roomId);
+    const connectionMode = body?.connectionMode === "data" ? "data" : "voice";
+    const isVoiceMode = connectionMode === "voice";
 
     if (!roomId) {
       return NextResponse.json({ error: "roomId is required" }, { status: 400 });
@@ -51,7 +58,7 @@ export async function POST(request: Request) {
     }
 
     const transcriberEnabled = isTranscriberEnabled();
-    if (transcriberEnabled && !credentials.deepgramApiKey) {
+    if (isVoiceMode && transcriberEnabled && !credentials.deepgramApiKey) {
       const mode = optionalEnv("USER_PROVIDER_KEYS_MODE") ?? "true";
       return NextResponse.json(
         {
@@ -64,7 +71,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (transcriberEnabled) {
+    if (isVoiceMode && transcriberEnabled) {
       await ensureTranscriberWorker(
         {
           livekitUrl: credentials.livekitUrl,
@@ -77,6 +84,16 @@ export async function POST(request: Request) {
         },
       );
     }
+
+    void ensureConversationAnalysisWorker({
+      waitForReady: false,
+      reason: `${connectionMode}-token:${roomId}`,
+    }).catch((workerError) => {
+      console.warn("Failed to ensure conversation analysis worker", {
+        roomId,
+        error: workerError instanceof Error ? workerError.message : workerError,
+      });
+    });
 
     await prisma.roomParticipant.upsert({
       where: {
@@ -94,7 +111,7 @@ export async function POST(request: Request) {
       },
     });
 
-    if (transcriberEnabled) {
+    if (isVoiceMode && transcriberEnabled) {
       try {
         const dispatchResult = await ensureTranscriberDispatch(roomId, {
           livekitUrl: credentials.livekitUrl,
@@ -135,7 +152,8 @@ export async function POST(request: Request) {
       livekitUrl: credentials.livekitUrl,
       identity,
       displayName: user.username,
-      transcriberEnabled,
+      transcriberEnabled: isVoiceMode ? transcriberEnabled : false,
+      connectionMode,
       keyMasks: {
         livekit: credentials.livekitApiKeyMask,
         deepgram: credentials.deepgramApiKeyMask,

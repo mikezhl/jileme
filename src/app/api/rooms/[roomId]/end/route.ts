@@ -2,6 +2,7 @@ import { RoomStatus } from "@prisma/client";
 import { RoomServiceClient, TwirpError } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
 
+import { executeFinalSummaryForRoomRef } from "@/features/analysis/service/analysis-service";
 import { requireApiUser } from "@/lib/auth-guard";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 import { prisma } from "@/lib/prisma";
@@ -99,12 +100,28 @@ export async function POST(_request: Request, context: RouteContext) {
         endedAt: new Date(),
       },
       select: {
+        id: true,
         roomId: true,
         status: true,
         endedAt: true,
         createdById: true,
       },
     });
+
+    try {
+      const summaryResult = await executeFinalSummaryForRoomRef(updated.id);
+      console.info("Room end final summary result", {
+        roomId: updated.roomId,
+        executed: summaryResult.executed,
+        reason: summaryResult.reason,
+        messageId: summaryResult.messageId,
+      });
+    } catch (summaryError) {
+      console.error("Failed to generate final summary on room end", {
+        roomId: updated.roomId,
+        error: summaryError instanceof Error ? summaryError.message : summaryError,
+      });
+    }
 
     try {
       await disconnectActiveVoiceRoom(updated.roomId, updated.createdById);

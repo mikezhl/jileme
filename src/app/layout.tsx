@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "急了么 Jileme",
+  title: "急了么 Logicly.Chat",
   description:
     "一个实时的AI辩论/吵架辅助+分析+总结平台。A real-time AI voice room with transcription and analysis.",
 };

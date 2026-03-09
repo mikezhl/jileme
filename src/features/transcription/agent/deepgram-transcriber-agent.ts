@@ -13,9 +13,15 @@ import {
   voice,
 } from "@livekit/agents";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
-import { createRoomServiceClient, publishChatMessageViaLivekit } from "../lib/livekit-chat-relay";
-import { toChatMessage } from "../lib/messages";
-import { resolveProviderCredentialsForOwner } from "../lib/provider-keys";
+import { enqueueRealtimeAnalysisEvent } from "@/features/analysis/service/analysis-events";
+import {
+  formatCompactAnalysisError,
+  getAnalysisSchemaFixHint,
+  isAnalysisSchemaMissingError,
+} from "@/features/analysis/service/analysis-errors";
+import { createRoomServiceClient, publishChatMessageViaLivekit } from "@/lib/livekit-chat-relay";
+import { toChatMessage } from "@/lib/messages";
+import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 
 const prisma = new PrismaClient();
 const DEFAULT_AGENT_NAME = "deepgram-transcriber";
@@ -124,7 +130,7 @@ function buildDeepgramOptions(deepgramApiKey: string): deepgram.STTOptions {
 
   return {
     apiKey: deepgramApiKey.trim(),
-    model: (process.env.DEEPGRAM_MODEL ?? "nova-3") as deepgram.STTOptions["model"],
+    model: (process.env.DEEPGRAM_MODEL ?? "nova-2") as deepgram.STTOptions["model"],
     language: process.env.DEEPGRAM_LANGUAGE ?? "zh",
     interimResults: parseBooleanEnv(process.env.DEEPGRAM_INTERIM_RESULTS, true),
     punctuate: parseBooleanEnv(process.env.DEEPGRAM_PUNCTUATE, true),
@@ -374,6 +380,27 @@ async function startParticipantSession({
         });
         if (!persistedMessage) {
           return;
+        }
+
+        try {
+          await enqueueRealtimeAnalysisEvent(roomRefId, persistedMessage.id);
+        } catch (enqueueError) {
+          if (isAnalysisSchemaMissingError(enqueueError)) {
+            logWarn("Analysis queue unavailable while enqueuing transcript event", {
+              roomId,
+              participantIdentity: participant.identity,
+              messageId: persistedMessage.id,
+              hint: getAnalysisSchemaFixHint(),
+              error: formatCompactAnalysisError(enqueueError),
+            });
+          } else {
+            logWarn("Failed to enqueue transcript analysis event", {
+              roomId,
+              participantIdentity: participant.identity,
+              messageId: persistedMessage.id,
+              error: formatCompactAnalysisError(enqueueError),
+            });
+          }
         }
 
         const chatMessage = toChatMessage(persistedMessage);

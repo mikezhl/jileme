@@ -1,6 +1,13 @@
 import { MessageType } from "@prisma/client";
 import { NextResponse } from "next/server";
 
+import { enqueueRealtimeAnalysisEvent } from "@/features/analysis/service/analysis-events";
+import {
+  formatCompactAnalysisError,
+  getAnalysisSchemaFixHint,
+  isAnalysisSchemaMissingError,
+} from "@/features/analysis/service/analysis-errors";
+import { ensureConversationAnalysisWorker } from "@/features/analysis/runtime/worker-manager";
 import { requireApiUser } from "@/lib/auth-guard";
 import { ChatMessage } from "@/lib/chat-types";
 import { MESSAGE_PAGE_SIZE } from "@/lib/constants";
@@ -125,6 +132,36 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
     const chatMessage = toChatMessage(message);
+
+    void ensureConversationAnalysisWorker({
+      waitForReady: false,
+      reason: `text-message:${roomId}`,
+    }).catch((workerError) => {
+      console.warn("Failed to ensure conversation analysis worker", {
+        roomId,
+        messageId: chatMessage.id,
+        error: workerError instanceof Error ? workerError.message : workerError,
+      });
+    });
+
+    try {
+      await enqueueRealtimeAnalysisEvent(room.id, message.id);
+    } catch (enqueueError) {
+      if (isAnalysisSchemaMissingError(enqueueError)) {
+        console.warn("Analysis queue unavailable while enqueuing text message", {
+          roomId,
+          messageId: chatMessage.id,
+          hint: getAnalysisSchemaFixHint(),
+          error: formatCompactAnalysisError(enqueueError),
+        });
+      } else {
+        console.warn("Failed to enqueue realtime analysis event", {
+          roomId,
+          messageId: chatMessage.id,
+          error: formatCompactAnalysisError(enqueueError),
+        });
+      }
+    }
 
     try {
       await relayMessageToRoom(roomId, room.createdById, chatMessage);
