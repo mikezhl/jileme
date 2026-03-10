@@ -61,6 +61,11 @@ type RoomMetaResponse = {
     status: "ACTIVE" | "ENDED";
     endedAt: string | null;
     isCreator: boolean;
+    ownerPresence: {
+      active: boolean;
+      lastSeenAt: string | null;
+      timeoutMs: number;
+    };
   };
   providers: {
     voice: {
@@ -108,6 +113,11 @@ type RoomMetaState = {
   status: "ACTIVE" | "ENDED";
   endedAt: string | null;
   isCreator: boolean;
+  ownerPresence: {
+    active: boolean;
+    lastSeenAt: string | null;
+    timeoutMs: number;
+  };
   providers: {
     voice: {
       providedBy: {
@@ -149,6 +159,7 @@ type VoiceTrackParticipant = {
 };
 
 const ROOM_CONNECTION_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+const ROOM_META_POLL_INTERVAL_MS = 5 * 1000;
 
 function formatDate(value: string | null, language: UiLanguage) {
   if (!value) {
@@ -309,6 +320,12 @@ function getIdleTranscriptionState(voice: VoiceProviderState): TranscriptionStat
   return voice.transcriptionEnabled && voice.transcriptionReady ? "idle" : "disabled";
 }
 
+function getOwnerOfflineError(language: UiLanguage) {
+  return language === "zh"
+    ? "房主当前不在房间，连接已断开。"
+    : "Room owner is offline. The live room connection has been disconnected.";
+}
+
 function hasPublishedMicrophoneTrack(participant: VoiceTrackParticipant) {
   if (participant.isAgent) {
     return false;
@@ -338,6 +355,11 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     status: "ACTIVE",
     endedAt: null,
     isCreator: false,
+    ownerPresence: {
+      active: false,
+      lastSeenAt: null,
+      timeoutMs: 0,
+    },
     providers: {
       voice: {
         providedBy: {
@@ -389,6 +411,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   const participantIdentityRef = useRef("");
   const voiceCallStartingRef = useRef(false);
   const transcriptionRuntimeReadyRef = useRef(false);
+  const previousOwnerActiveRef = useRef(false);
 
   const upsertMessages = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) {
@@ -557,6 +580,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       status: payload.room.status,
       endedAt: payload.room.endedAt,
       isCreator: payload.room.isCreator,
+      ownerPresence: payload.room.ownerPresence,
       providers: payload.providers,
     });
   }, [roomId, t]);
@@ -583,7 +607,13 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   );
 
   const connectRoom = useCallback(async () => {
-    if (roomRef.current || connectionState !== "disconnected" || roomMeta.status === "ENDED") {
+    const ownerActive = roomMeta.isCreator || roomMeta.ownerPresence.active;
+    if (
+      roomRef.current ||
+      connectionState !== "disconnected" ||
+      roomMeta.status === "ENDED" ||
+      !ownerActive
+    ) {
       return;
     }
 
@@ -728,6 +758,8 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   }, [
     armConnectionIdleTimer,
     connectionState,
+    roomMeta.isCreator,
+    roomMeta.ownerPresence.active,
     disconnectRoom,
     fetchMessages,
     fetchRoomMeta,
@@ -780,10 +812,12 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
   const startVoiceCall = useCallback(async () => {
     const activeRoom = roomRef.current;
+    const ownerActive = roomMeta.isCreator || roomMeta.ownerPresence.active;
     if (
       !activeRoom ||
       connectionState !== "connected" ||
       roomMeta.status === "ENDED" ||
+      !ownerActive ||
       micEnabled ||
       transcriptionState === "starting"
     ) {
@@ -813,6 +847,8 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     connectionState,
     ensureVoiceRuntime,
     micEnabled,
+    roomMeta.isCreator,
+    roomMeta.ownerPresence.active,
     roomMeta.status,
     transcriptionState,
     syncVoiceSessionState,
@@ -886,7 +922,11 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
   async function submitTextMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (roomMeta.status === "ENDED") {
+    const ownerActive = roomMeta.isCreator || roomMeta.ownerPresence.active;
+    if (roomMeta.status === "ENDED" || !ownerActive) {
+      if (!ownerActive) {
+        setRoomError(getOwnerOfflineError(language));
+      }
       return;
     }
 
@@ -927,7 +967,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     }
 
     event.preventDefault();
-    if (sendingText || roomMeta.status === "ENDED") {
+    if (sendingText || roomMeta.status === "ENDED" || (!roomMeta.isCreator && !roomMeta.ownerPresence.active)) {
       return;
     }
 
@@ -943,6 +983,16 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       setRoomError(error instanceof Error ? error.message : t("加载房间数据失败", "Failed to load room data"));
     });
   }, [fetchMessages, fetchRoomMeta, t]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void fetchRoomMeta().catch(() => undefined);
+    }, ROOM_META_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [fetchRoomMeta]);
 
   useEffect(() => {
     micEnabledRef.current = micEnabled;
@@ -972,10 +1022,21 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   }, [connectionState, disconnectRoom, roomMeta.status]);
 
   useEffect(() => {
+    const ownerActive = roomMeta.isCreator || roomMeta.ownerPresence.active;
+    if (ownerActive && !previousOwnerActiveRef.current) {
+      setHasAutoConnectAttempted(false);
+    }
+    previousOwnerActiveRef.current = ownerActive;
+  }, [roomMeta.isCreator, roomMeta.ownerPresence.active]);
+
+  useEffect(() => {
     if (hasAutoConnectAttempted) {
       return;
     }
     if (roomMeta.status === "ENDED") {
+      return;
+    }
+    if (!roomMeta.isCreator && !roomMeta.ownerPresence.active) {
       return;
     }
     if (connectionState !== "disconnected") {
@@ -984,7 +1045,36 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
     setHasAutoConnectAttempted(true);
     void connectRoom();
-  }, [connectRoom, connectionState, hasAutoConnectAttempted, roomMeta.status]);
+  }, [
+    connectRoom,
+    connectionState,
+    hasAutoConnectAttempted,
+    roomMeta.isCreator,
+    roomMeta.ownerPresence.active,
+    roomMeta.status,
+  ]);
+
+  useEffect(() => {
+    if (roomMeta.status === "ENDED" || roomMeta.isCreator || roomMeta.ownerPresence.active) {
+      return;
+    }
+
+    setRoomError(getOwnerOfflineError(language));
+    if (connectionState !== "disconnected") {
+      if (micEnabledRef.current) {
+        void releaseVoiceRuntimeIfIdle();
+      }
+      disconnectRoom();
+    }
+  }, [
+    connectionState,
+    disconnectRoom,
+    language,
+    releaseVoiceRuntimeIfIdle,
+    roomMeta.isCreator,
+    roomMeta.ownerPresence.active,
+    roomMeta.status,
+  ]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1036,16 +1126,21 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     if (roomMeta.status === "ENDED") {
       return;
     }
+    if (!roomMeta.isCreator && !roomMeta.ownerPresence.active) {
+      return;
+    }
 
     warmupRequestedRef.current = true;
     void fetch(`/api/rooms/${encodeURIComponent(roomId)}/warmup`, {
       method: "POST",
     }).catch(() => undefined);
-  }, [roomId, roomMeta.status]);
+  }, [roomId, roomMeta.isCreator, roomMeta.ownerPresence.active, roomMeta.status]);
 
   const isEnded = roomMeta.status === "ENDED";
+  const ownerActive = roomMeta.isCreator || roomMeta.ownerPresence.active;
+  const roomInteractionBlocked = isEnded || !ownerActive;
   const isInitialConnectionPending =
-    connectionState === "disconnected" && !hasAutoConnectAttempted && !isEnded;
+    connectionState === "disconnected" && !hasAutoConnectAttempted && !roomInteractionBlocked;
   const roomConnectionStatusClass = isInitialConnectionPending ? "connecting" : connectionState;
 
   return (
@@ -1080,6 +1175,12 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
                   <span>
                     {t("已结束", "Ended")} ({formatDate(roomMeta.endedAt, language)})
                   </span>
+                </>
+              )}
+              {!isEnded && !ownerActive && (
+                <>
+                  <span style={{ color: 'var(--line-strong)' }}>|</span>
+                  <span>{t("房主离线", "Owner Offline")}</span>
                 </>
               )}
               <span style={{ color: 'var(--line-strong)' }}>|</span>
@@ -1185,12 +1286,14 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
             placeholder={
               isEnded
                 ? t("房间已结束，仅可查看历史记录", "This room has ended and is now read-only")
+                : !ownerActive
+                  ? t("房主离线，暂时无法发送消息", "Owner is offline, messages are temporarily unavailable")
                 : t("输入消息...", "Type a message...")
             }
-            disabled={isEnded}
+            disabled={roomInteractionBlocked}
             rows={1}
           />
-          <button type="submit" className="primary-btn" disabled={sendingText || isEnded}>
+          <button type="submit" className="primary-btn" disabled={sendingText || roomInteractionBlocked}>
             {sendingText ? t("发送中", "Sending") : t("发送", "Send")}
           </button>
           
@@ -1199,11 +1302,11 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               type="button"
               className={micEnabled ? "primary-btn" : "ghost-btn"}
               onClick={() => void (micEnabled ? leaveVoiceCall() : startVoiceCall())}
-              disabled={isEnded}
+              disabled={roomInteractionBlocked}
             >
               {micEnabled ? t("退出通话", "Leave Call") : t("开始通话", "Start Call")}
             </button>
-          ) : hasAutoConnectAttempted && !isEnded ? (
+          ) : hasAutoConnectAttempted && !isEnded && ownerActive ? (
             <button
               type="button"
               className="ghost-btn"
@@ -1213,6 +1316,10 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
               {connectionState === "connecting"
                 ? t("重连中...", "Reconnecting...")
                 : t("重新连接", "Reconnect")}
+            </button>
+          ) : !isEnded ? (
+            <button type="button" className="ghost-btn" disabled>
+              {t("等待房主在线", "Waiting for Owner")}
             </button>
           ) : null}
         </form>

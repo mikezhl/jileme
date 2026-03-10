@@ -5,6 +5,7 @@ import { createRoomServiceClient, publishChatMessageViaLivekit } from "@/lib/liv
 import { toChatMessage } from "@/lib/messages";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 import { prisma } from "@/lib/prisma";
+import { recordLlmUsageForOwner } from "@/lib/usage-stats";
 import { compactConversationForAnalysis } from "./dialogue-compact";
 
 const REALTIME_ANALYSIS_SENDER = "AI Analyst";
@@ -126,9 +127,14 @@ export async function executeRealtimeAnalysisForRoomRef(roomRefId: string): Prom
     historyConversation: compacted.historyConversation,
     currentRoundConversation: compacted.currentRoundConversation,
   }, room.createdById);
+  await recordLlmUsageForOwner({
+    ownerUserId: room.createdById,
+    source: llmResult.source,
+    totalTokens: llmResult.usage?.totalTokens,
+  });
 
   const externalRef = `analysis:realtime:${roomRefId}:${compacted.latestCurrentMessageId}`;
-  const content = JSON.stringify(llmResult, null, 2);
+  const content = JSON.stringify(llmResult.content, null, 2);
 
   const persisted = await prisma.message.upsert({
     where: {
@@ -221,9 +227,14 @@ export async function executeFinalSummaryForRoomRef(roomRefId: string): Promise<
     speakerMap: compacted.speakerMap,
     fullConversation: compacted.fullConversation,
   }, room.createdById);
+  await recordLlmUsageForOwner({
+    ownerUserId: room.createdById,
+    source: llmResult.source,
+    totalTokens: llmResult.usage?.totalTokens,
+  });
 
   const externalRef = `analysis:summary:${roomRefId}`;
-  const content = JSON.stringify(llmResult, null, 2);
+  const content = JSON.stringify(llmResult.content, null, 2);
 
   const persisted = await prisma.message.upsert({
     where: {

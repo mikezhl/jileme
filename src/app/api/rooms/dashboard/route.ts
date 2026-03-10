@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireApiUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
+import { getUserUsageSummary } from "@/lib/usage-stats";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,7 @@ export async function GET() {
       return unauthorizedResponse!;
     }
 
-    const [createdRooms, joinedMemberships] = await Promise.all([
+    const [createdRooms, joinedMemberships, usage] = await Promise.all([
       prisma.room.findMany({
         where: {
           createdById: user.id,
@@ -76,6 +77,7 @@ export async function GET() {
           lastSeenAt: "desc",
         },
       }),
+      getUserUsageSummary(user.id),
     ]);
 
     return NextResponse.json({
@@ -84,6 +86,7 @@ export async function GET() {
         ...toRoomSummary(membership.room),
         joinedAt: membership.joinedAt.toISOString(),
       })),
+      usage,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch dashboard rooms";

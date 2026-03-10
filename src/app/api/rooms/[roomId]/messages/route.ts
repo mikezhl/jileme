@@ -15,6 +15,7 @@ import { createRoomServiceClient, publishChatMessageViaLivekit } from "@/lib/liv
 import { toChatMessage } from "@/lib/messages";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 import { prisma } from "@/lib/prisma";
+import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
 import { RoomAccessError, assertRoomNotEnded, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
 
@@ -120,6 +121,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const room = await getAccessibleRoomOrThrow(roomId, user.id);
     assertRoomNotEnded(room.status);
+    await assertRoomOwnerActiveOrThrow(room, user.id);
 
     const message = await prisma.message.create({
       data: {

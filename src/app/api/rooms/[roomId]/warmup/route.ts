@@ -6,6 +6,7 @@ import { ensureTranscriberWorker } from "@/features/transcription/runtime/worker
 import { requireApiUser } from "@/lib/auth-guard";
 import { getUserProviderKeysMode } from "@/lib/env";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
+import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
 
@@ -34,6 +35,7 @@ export async function POST(_request: Request, context: RouteContext) {
     if (room.status === RoomStatus.ENDED) {
       return NextResponse.json({ ok: true, skipped: "room-ended" });
     }
+    await assertRoomOwnerActiveOrThrow(room, user.id);
 
     if (!isTranscriberEnabled()) {
       return NextResponse.json({ ok: true, skipped: "transcriber-disabled" });

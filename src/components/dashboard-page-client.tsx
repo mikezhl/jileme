@@ -25,9 +25,21 @@ type KeyStatus = {
   deepgramApiKeyMask: string | null;
 };
 
+type UsageSummary = {
+  voice: {
+    userSeconds: number;
+    platformSeconds: number;
+  };
+  llm: {
+    userTokens: number;
+    platformTokens: number;
+  };
+};
+
 type DashboardResponse = {
   createdRooms: RoomSummary[];
   joinedRooms: RoomSummary[];
+  usage: UsageSummary;
   error?: string;
 };
 
@@ -69,6 +81,7 @@ type DashboardPageClientProps = {
   initialJoinedRooms: RoomSummary[];
   initialKeyStatus: KeyStatus | null;
   initialLlmKeyStatus: LlmKeyStatus | null;
+  initialUsageSummary: UsageSummary | null;
   initialAuthMode: AuthMode | null;
   initialNextPath: string | null;
 };
@@ -111,12 +124,26 @@ function isBlank(value: string) {
   return value.trim().length === 0;
 }
 
+function formatSeconds(value: number, language: UiLanguage) {
+  const formatter = new Intl.NumberFormat(toDateLocale(language), {
+    minimumFractionDigits: value > 0 && value < 10 ? 1 : 0,
+    maximumFractionDigits: 1,
+  });
+  return `${formatter.format(value)} ${language === "zh" ? "秒" : "s"}`;
+}
+
+function formatTokens(value: number, language: UiLanguage) {
+  const formatter = new Intl.NumberFormat(toDateLocale(language));
+  return `${formatter.format(value)} ${language === "zh" ? "tokens" : "tokens"}`;
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialCreatedRooms,
   initialJoinedRooms,
   initialKeyStatus,
   initialLlmKeyStatus,
+  initialUsageSummary,
   initialAuthMode,
   initialNextPath,
 }: DashboardPageClientProps) {
@@ -129,6 +156,7 @@ export default function DashboardPageClient({
 
   const [createdRooms, setCreatedRooms] = useState(initialCreatedRooms);
   const [joinedRooms, setJoinedRooms] = useState(initialJoinedRooms);
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(initialUsageSummary);
   const [roomIdToJoin, setRoomIdToJoin] = useState("");
   const [roomActionError, setRoomActionError] = useState("");
   const [roomActionLoading, setRoomActionLoading] = useState<"create" | "join" | null>(null);
@@ -189,6 +217,7 @@ export default function DashboardPageClient({
     setUser(null);
     setCreatedRooms([]);
     setJoinedRooms([]);
+    setUsageSummary(null);
     setKeyStatus(null);
     setLlmKeyStatus(null);
     setKeyError("");
@@ -237,6 +266,7 @@ export default function DashboardPageClient({
 
       setCreatedRooms(payload.createdRooms);
       setJoinedRooms(payload.joinedRooms);
+      setUsageSummary(payload.usage);
     } catch (error) {
       setRoomActionError(
         error instanceof Error ? error.message : t("获取历史房间失败", "Failed to load room history"),
@@ -300,6 +330,7 @@ export default function DashboardPageClient({
 
     setCreatedRooms(dashboardPayload.createdRooms);
     setJoinedRooms(dashboardPayload.joinedRooms);
+    setUsageSummary(dashboardPayload.usage);
     setKeyStatus(keyPayload.status);
     if (!llmResponse.ok) {
       throw new Error(llmPayload.error ?? t("读取 LLM 状态失败", "Failed to read LLM status"));
@@ -795,6 +826,62 @@ export default function DashboardPageClient({
                       </div>
                     </>
                   )}
+                </div>
+              )}
+            </details>
+
+            <details className="minimal-details">
+              <summary>{t("使用量统计", "Usage Stats")}</summary>
+              {!isAuthenticated ? (
+                <div className="details-content">
+                  <p className="panel-tip">
+                    {t("登录后可查看累计消耗统计。", "Sign in to view your accumulated usage.")}
+                  </p>
+                </div>
+              ) : (
+                <div className="details-content">
+                  <p className="panel-tip">
+                    {t(
+                      "仅统计房主名下房间产生的消耗。房间参与者不会累计自己的 Key 或平台用量。",
+                      "Only usage generated under rooms you own is counted. Participants do not accumulate their own or platform usage.",
+                    )}
+                  </p>
+                  <div
+                    className="usage-summary-grid"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: "16px",
+                      alignItems: "start",
+                    }}
+                  >
+                    <section className="usage-summary-column" style={{ minWidth: 0 }}>
+                      <h4>{t("语音", "Voice")}</h4>
+                      <div className="key-status-grid">
+                        <span>
+                          {t("自有 Key", "Own Key")}:{" "}
+                          {formatSeconds(usageSummary?.voice.userSeconds ?? 0, language)}
+                        </span>
+                        <span>
+                          {t("平台 Key", "Platform Key")}:{" "}
+                          {formatSeconds(usageSummary?.voice.platformSeconds ?? 0, language)}
+                        </span>
+                      </div>
+                    </section>
+                    <section className="usage-summary-column" style={{ minWidth: 0 }}>
+                      <h4>{t("LLM", "LLM")}</h4>
+                      <div className="key-status-grid">
+                        <span>
+                          {t("自有 Key", "Own Key")}:{" "}
+                          {formatTokens(usageSummary?.llm.userTokens ?? 0, language)}
+                        </span>
+                        <span>
+                          {t("平台 Key", "Platform Key")}:{" "}
+                          {formatTokens(usageSummary?.llm.platformTokens ?? 0, language)}
+                        </span>
+                      </div>
+                    </section>
+                  </div>
                 </div>
               )}
             </details>

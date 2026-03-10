@@ -11,6 +11,7 @@ import { ensureConversationAnalysisWorker } from "@/features/analysis/runtime/wo
 import { requireApiUser } from "@/lib/auth-guard";
 import { toChatMessage } from "@/lib/messages";
 import { prisma } from "@/lib/prisma";
+import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
 import { RoomAccessError, assertRoomNotEnded, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeDisplayName, normalizeRoomId } from "@/lib/room-utils";
 
@@ -71,6 +72,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const room = await getAccessibleRoomOrThrow(roomId, user.id);
     assertRoomNotEnded(room.status);
+    await assertRoomOwnerActiveOrThrow(room, user.id);
     const persisted = [];
 
     void ensureConversationAnalysisWorker({

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getUserLlmKeyStatus } from "@/lib/llm-provider-keys";
 import { getUserKeyStatus } from "@/lib/provider-keys";
 import { prisma } from "@/lib/prisma";
+import { getUserUsageSummary } from "@/lib/usage-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -65,13 +66,14 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         initialJoinedRooms={[]}
         initialKeyStatus={null}
         initialLlmKeyStatus={null}
+        initialUsageSummary={null}
         initialAuthMode={initialAuthMode}
         initialNextPath={initialNextPath}
       />
     );
   }
 
-  const [createdRooms, joinedRooms, keyStatus, llmKeyStatus] = await Promise.all([
+  const [createdRooms, joinedRooms, keyStatus, llmKeyStatus, usageSummary] = await Promise.all([
     prisma.room.findMany({
       where: {
         createdById: user.id,
@@ -115,6 +117,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     }),
     getUserKeyStatus(user.id),
     getUserLlmKeyStatus(user.id),
+    getUserUsageSummary(user.id),
   ]);
 
   return (
@@ -130,6 +133,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       }))}
       initialKeyStatus={keyStatus}
       initialLlmKeyStatus={llmKeyStatus}
+      initialUsageSummary={usageSummary}
       initialAuthMode={initialAuthMode}
       initialNextPath={initialNextPath}
     />

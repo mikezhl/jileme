@@ -1,7 +1,7 @@
 import {
   ConversationLlmInvocation,
-  ConversationLlmJson,
   ConversationLlmProvider,
+  ConversationLlmProviderResult,
 } from "./types";
 
 type OpenAiCompatibleResponse = {
@@ -15,6 +15,11 @@ type OpenAiCompatibleResponse = {
           }>;
     };
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
   error?: {
     message?: string;
   };
@@ -84,6 +89,21 @@ function normalizeJsonPayload(rawContent: string) {
   return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 }
 
+function normalizeUsage(
+  usage: OpenAiCompatibleResponse["usage"] | undefined,
+): ConversationLlmProviderResult["usage"] {
+  if (!usage) {
+    return null;
+  }
+
+  return {
+    promptTokens: typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null,
+    completionTokens:
+      typeof usage.completion_tokens === "number" ? usage.completion_tokens : null,
+    totalTokens: typeof usage.total_tokens === "number" ? usage.total_tokens : null,
+  };
+}
+
 async function readErrorMessage(response: Response) {
   try {
     const payload = (await response.json()) as OpenAiCompatibleResponse;
@@ -95,7 +115,7 @@ async function readErrorMessage(response: Response) {
 }
 
 export class OpenAiCompatibleConversationLlmProvider implements ConversationLlmProvider {
-  async invoke(invocation: ConversationLlmInvocation): Promise<ConversationLlmJson> {
+  async invoke(invocation: ConversationLlmInvocation): Promise<ConversationLlmProviderResult> {
     const { runtime } = invocation;
     if (!runtime.baseUrl || !runtime.apiKey || !runtime.model) {
       throw new Error(
@@ -137,7 +157,10 @@ export class OpenAiCompatibleConversationLlmProvider implements ConversationLlmP
     }
 
     try {
-      return JSON.parse(normalizeJsonPayload(content)) as ConversationLlmJson;
+      return {
+        content: JSON.parse(normalizeJsonPayload(content)) as Record<string, unknown>,
+        usage: normalizeUsage(payload.usage),
+      };
     } catch (error) {
       throw new Error(
         `OpenAI-compatible LLM returned non-JSON content: ${

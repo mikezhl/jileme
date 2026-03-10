@@ -32,7 +32,8 @@ import {
 } from "@/features/analysis/service/analysis-errors";
 import { createRoomServiceClient, publishChatMessageViaLivekit } from "@/lib/livekit-chat-relay";
 import { toChatMessage } from "@/lib/messages";
-import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
+import { resolveProviderCredentialsForOwner, type KeySource } from "@/lib/provider-keys";
+import { recordVoiceUsageForOwner } from "@/lib/usage-stats";
 
 const prisma = new PrismaClient();
 const DEFAULT_AGENT_NAME = "deepgram-transcriber";
@@ -60,6 +61,8 @@ type TranscriptWindowState = {
 type ParticipantTranscriptionSession = {
   participant: TranscribedParticipant;
   roomRefId: string;
+  ownerUserId: string | null;
+  voiceUsageSource: KeySource;
   sttOptions: deepgram.STTOptions;
   sttProvider: deepgram.STT;
   speechStream: stt.SpeechStream;
@@ -67,8 +70,15 @@ type ParticipantTranscriptionSession = {
   audioStream: AudioStream | null;
   audioTrackSid: string | null;
   speechState: SpeechState;
+  speechStartedAtMs: number | null;
   closed: boolean;
   consumeTask: Promise<void>;
+};
+
+type RoomVoiceRuntime = {
+  ownerUserId: string | null;
+  deepgramApiKey: string | null;
+  usageSource: KeySource;
 };
 
 function logInfo(message: string, payload?: Record<string, unknown>) {
@@ -299,12 +309,43 @@ async function upsertTranscriptMessage({
   return message;
 }
 
+function flushSpeechUsage(session: ParticipantTranscriptionSession, roomId: string) {
+  if (session.speechStartedAtMs === null) {
+    return;
+  }
+
+  const durationMs = Math.max(0, Date.now() - session.speechStartedAtMs);
+  session.speechStartedAtMs = null;
+
+  if (durationMs <= 0) {
+    return;
+  }
+
+  void recordVoiceUsageForOwner({
+    ownerUserId: session.ownerUserId,
+    source: session.voiceUsageSource,
+    durationMs,
+  }).catch((error) => {
+    logError("Failed to record voice usage", error, {
+      roomId,
+      participantIdentity: session.participant.identity,
+      durationMs,
+      source: session.voiceUsageSource,
+    });
+  });
+}
+
 function updateSpeechState(session: ParticipantTranscriptionSession, roomId: string, nextState: SpeechState) {
   if (session.speechState === nextState) {
     return;
   }
 
   const previousState = session.speechState;
+  if (nextState === "speaking") {
+    session.speechStartedAtMs = Date.now();
+  } else if (previousState === "speaking") {
+    flushSpeechUsage(session, roomId);
+  }
   session.speechState = nextState;
   logInfo("User state changed", {
     roomId,
@@ -679,14 +720,14 @@ async function startParticipantSession({
   ctx,
   participant,
   roomId,
-  deepgramApiKey,
+  roomVoiceRuntime,
   relayRoomServiceClient,
   sessionRegistry,
 }: {
   ctx: JobContext;
   participant: TranscribedParticipant;
   roomId: string;
-  deepgramApiKey: string | null;
+  roomVoiceRuntime: RoomVoiceRuntime;
   relayRoomServiceClient: RoomServiceClient | null;
   sessionRegistry: Map<string, ParticipantTranscriptionSession>;
 }) {
@@ -707,7 +748,7 @@ async function startParticipantSession({
     return;
   }
 
-  if (!deepgramApiKey?.trim()) {
+  if (!roomVoiceRuntime.deepgramApiKey?.trim()) {
     throw new Error("Deepgram API key is missing for this room");
   }
 
@@ -716,12 +757,14 @@ async function startParticipantSession({
     return;
   }
 
-  const sttOptions = buildDeepgramOptions(deepgramApiKey);
+  const sttOptions = buildDeepgramOptions(roomVoiceRuntime.deepgramApiKey);
   const sttProvider = new deepgram.STT(sttOptions);
   const speechStream = sttProvider.stream();
   const session: ParticipantTranscriptionSession = {
     participant,
     roomRefId,
+    ownerUserId: roomVoiceRuntime.ownerUserId,
+    voiceUsageSource: roomVoiceRuntime.usageSource,
     sttOptions,
     sttProvider,
     speechStream,
@@ -729,6 +772,7 @@ async function startParticipantSession({
     audioStream: null,
     audioTrackSid: null,
     speechState: "listening",
+    speechStartedAtMs: null,
     closed: false,
     consumeTask: Promise.resolve(),
   };
@@ -781,7 +825,7 @@ async function ensureParticipantSession({
   ctx,
   participant,
   roomId,
-  deepgramApiKey,
+  roomVoiceRuntime,
   relayRoomServiceClient,
   sessionRegistry,
   startingSessionRegistry,
@@ -789,7 +833,7 @@ async function ensureParticipantSession({
   ctx: JobContext;
   participant: TranscribedParticipant;
   roomId: string;
-  deepgramApiKey: string | null;
+  roomVoiceRuntime: RoomVoiceRuntime;
   relayRoomServiceClient: RoomServiceClient | null;
   sessionRegistry: Map<string, ParticipantTranscriptionSession>;
   startingSessionRegistry: Set<string>;
@@ -822,7 +866,7 @@ async function ensureParticipantSession({
         ctx,
         participant,
         roomId,
-        deepgramApiKey,
+        roomVoiceRuntime,
         relayRoomServiceClient,
         sessionRegistry,
       });
@@ -832,7 +876,7 @@ async function ensureParticipantSession({
   }
 }
 
-async function resolveRoomDeepgramApiKey(roomId: string): Promise<string | null> {
+async function resolveRoomVoiceRuntime(roomId: string): Promise<RoomVoiceRuntime> {
   const room = await prisma.room.findUnique({
     where: { roomId },
     select: {
@@ -841,11 +885,19 @@ async function resolveRoomDeepgramApiKey(roomId: string): Promise<string | null>
   });
 
   if (!room) {
-    return null;
+    return {
+      ownerUserId: null,
+      deepgramApiKey: null,
+      usageSource: "unavailable",
+    };
   }
 
   const credentials = await resolveProviderCredentialsForOwner(room.createdById);
-  return credentials.deepgramApiKey;
+  return {
+    ownerUserId: room.createdById,
+    deepgramApiKey: credentials.deepgramApiKey,
+    usageSource: credentials.deepgramSource,
+  };
 }
 
 export default defineAgent({
@@ -862,7 +914,7 @@ export default defineAgent({
 
     const sessions = new Map<string, ParticipantTranscriptionSession>();
     const startingSessions = new Set<string>();
-    const roomDeepgramApiKey = await resolveRoomDeepgramApiKey(roomId);
+    const roomVoiceRuntime = await resolveRoomVoiceRuntime(roomId);
     const relayRoomServiceClient = createRelayRoomServiceClient();
 
     const ensureAndSyncParticipant = async (participant: RemoteParticipant) => {
@@ -870,7 +922,7 @@ export default defineAgent({
         ctx,
         participant,
         roomId,
-        deepgramApiKey: roomDeepgramApiKey,
+        roomVoiceRuntime,
         relayRoomServiceClient,
         sessionRegistry: sessions,
         startingSessionRegistry: startingSessions,

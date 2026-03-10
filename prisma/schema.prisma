@@ -67,6 +67,7 @@ model User {
   messages         Message[]
   providerKeys     UserProviderKeys?
   llmKeys          UserLlmKeys?
+  usageStats       UserUsageStats?
 }
 
 model Session {
@@ -115,6 +116,18 @@ model UserLlmKeys {
   modelEncrypted   String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model UserUsageStats {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voiceUserDurationMs     BigInt   @default(0)
+  voicePlatformDurationMs BigInt   @default(0)
+  llmUserTokens           BigInt   @default(0)
+  llmPlatformTokens       BigInt   @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model RoomAnalysisEvent {

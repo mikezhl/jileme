@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiUser } from "@/lib/auth-guard";
+import { getRoomOwnerPresence, touchRoomParticipantHeartbeat } from "@/lib/room-presence";
 import { RoomAccessError, buildRoomRuntimeInfo } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
 
@@ -26,12 +27,26 @@ export async function GET(_request: Request, context: RouteContext) {
     }
 
     const runtimeInfo = await buildRoomRuntimeInfo(roomId, user.id);
+    await touchRoomParticipantHeartbeat(runtimeInfo.room.id, user.id);
+    const ownerPresence = await getRoomOwnerPresence(
+      runtimeInfo.room.id,
+      runtimeInfo.room.createdById,
+    );
+
     return NextResponse.json({
       room: {
         roomId: runtimeInfo.room.roomId,
         status: runtimeInfo.room.status,
         endedAt: runtimeInfo.room.endedAt?.toISOString() ?? null,
         isCreator: runtimeInfo.isCreator,
+        ownerPresence: {
+          active:
+            runtimeInfo.isCreator || runtimeInfo.room.createdById === user.id
+              ? true
+              : ownerPresence.active,
+          lastSeenAt: ownerPresence.lastSeenAt?.toISOString() ?? null,
+          timeoutMs: ownerPresence.timeoutMs,
+        },
       },
       providers: runtimeInfo.providers,
     });

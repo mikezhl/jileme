@@ -7,7 +7,7 @@ import { OpenAiCompatibleConversationLlmProvider } from "./openai-compatible-llm
 import { resolvePromptTemplate } from "./prompts";
 import {
   ConversationLlmProvider,
-  ConversationLlmJson,
+  ConversationLlmInvocationResult,
   RealtimeConversationInput,
   SummaryConversationInput,
 } from "./types";
@@ -39,33 +39,43 @@ function getProvider(providerName: ConversationLlmProviderName): ConversationLlm
 export async function invokeRealtimeConversationAnalysis(
   input: RealtimeConversationInput,
   ownerUserId?: string | null,
-): Promise<ConversationLlmJson> {
+): Promise<ConversationLlmInvocationResult> {
   const promptResolution = resolvePromptTemplate("realtime", getRealtimePromptStyle());
   const runtime = await resolveConversationLlmRuntimeForOwner(ownerUserId);
   const provider = getProvider(runtime.provider);
 
-  return provider.invoke({
+  const result = await provider.invoke({
     mode: "realtime",
     style: promptResolution.style,
     prompt: promptResolution.prompt,
     input,
     runtime,
   });
+
+  return {
+    ...result,
+    source: runtime.source,
+  };
 }
 
 export async function invokeConversationSummary(
   input: SummaryConversationInput,
   ownerUserId?: string | null,
-): Promise<ConversationLlmJson> {
+): Promise<ConversationLlmInvocationResult> {
   const promptResolution = resolvePromptTemplate("summary", getSummaryPromptStyle());
   const runtime = await resolveConversationLlmRuntimeForOwner(ownerUserId);
   const provider = getProvider(runtime.provider);
 
-  return provider.invoke({
+  const result = await provider.invoke({
     mode: "summary",
     style: promptResolution.style,
     prompt: promptResolution.prompt,
     input,
     runtime,
   });
+
+  return {
+    ...result,
+    source: runtime.source,
+  };
 }

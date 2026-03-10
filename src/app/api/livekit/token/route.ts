@@ -14,6 +14,7 @@ import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
 import { buildRoomProviderModules } from "@/lib/provider-modules";
 import { resolveProviderCredentialsForOwner } from "@/lib/provider-keys";
 import { prisma } from "@/lib/prisma";
+import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
 
@@ -44,6 +45,8 @@ export async function POST(request: Request) {
     if (room.status === RoomStatus.ENDED) {
       return NextResponse.json({ error: "room has ended and voice is unavailable" }, { status: 403 });
     }
+    await assertRoomOwnerActiveOrThrow(room, user.id);
+
     const owner = room.createdById
       ? await prisma.user.findUnique({
           where: { id: room.createdById },

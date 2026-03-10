@@ -1,4 +1,5 @@
 import type { ResolvedConversationLlmRuntime } from "@/lib/llm-provider-keys";
+import type { RuntimeSource } from "@/lib/llm-provider-keys";
 
 export type RealtimeConversationInput = {
   roomId: string;
@@ -35,6 +36,21 @@ export type ConversationLlmInvocation =
 
 export type ConversationLlmJson = Record<string, unknown>;
 
+export type ConversationLlmUsage = {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+};
+
+export type ConversationLlmProviderResult = {
+  content: ConversationLlmJson;
+  usage: ConversationLlmUsage | null;
+};
+
+export type ConversationLlmInvocationResult = ConversationLlmProviderResult & {
+  source: RuntimeSource;
+};
+
 export interface ConversationLlmProvider {
-  invoke(invocation: ConversationLlmInvocation): Promise<ConversationLlmJson>;
+  invoke(invocation: ConversationLlmInvocation): Promise<ConversationLlmProviderResult>;
 }
