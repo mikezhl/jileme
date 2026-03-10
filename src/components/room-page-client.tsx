@@ -2,7 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ParticipantKind, Room, RoomEvent, Track } from "livekit-client";
+import { Room, RoomEvent, Track } from "livekit-client";
 
 import { ChatMessage } from "@/lib/chat-types";
 import { decodeLivekitChatMessageEvent, LIVEKIT_CHAT_MESSAGE_TOPIC } from "@/lib/livekit-chat-event";
@@ -141,6 +141,14 @@ type RoomMetaState = {
     };
   };
 };
+
+type VoiceProviderState = RoomMetaState["providers"]["voice"];
+type VoiceTrackParticipant = {
+  isAgent: boolean;
+  getTrackPublication(source: Track.Source): { isMuted: boolean } | undefined;
+};
+
+const ROOM_CONNECTION_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
 function formatDate(value: string | null, language: UiLanguage) {
   if (!value) {
@@ -297,6 +305,23 @@ function getAnalysisProviderDetails(
   return details;
 }
 
+function getIdleTranscriptionState(voice: VoiceProviderState): TranscriptionState {
+  return voice.transcriptionEnabled && voice.transcriptionReady ? "idle" : "disabled";
+}
+
+function hasPublishedMicrophoneTrack(participant: VoiceTrackParticipant) {
+  if (participant.isAgent) {
+    return false;
+  }
+
+  const publication = participant.getTrackPublication(Track.Source.Microphone);
+  return Boolean(publication && !publication.isMuted);
+}
+
+function hasConnectedTranscriberParticipant(room: Room) {
+  return [...room.remoteParticipants.values()].some((participant) => participant.isAgent);
+}
+
 export default function RoomPageClient({ roomId, username }: RoomPageClientProps) {
   const { language } = useUiLanguage();
   const isZh = language === "zh";
@@ -306,9 +331,8 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   const audioContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const warmupRequestedRef = useRef(false);
-  const autoConnectAttemptedRef = useRef(false);
-  const connectStartedAtRef = useRef<number | null>(null);
   const latestMessageCreatedAtRef = useRef<string | null>(null);
+  const inactivityTimerRef = useRef<number | null>(null);
 
   const [roomMeta, setRoomMeta] = useState<RoomMetaState>({
     status: "ACTIVE",
@@ -358,16 +382,13 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   const [sendingText, setSendingText] = useState(false);
   const [endingRoom, setEndingRoom] = useState(false);
   const [transcriptionState, setTranscriptionState] = useState<TranscriptionState>("idle");
+  const [hasAutoConnectAttempted, setHasAutoConnectAttempted] = useState(false);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const markTranscriptionReady = useCallback(() => {
-    setTranscriptionState((current) => {
-      if (current === "disabled" || current === "ready") {
-        return current;
-      }
-      return "ready";
-    });
-  }, []);
+  const voiceProviderRef = useRef(roomMeta.providers.voice);
+  const micEnabledRef = useRef(false);
+  const participantIdentityRef = useRef("");
+  const voiceCallStartingRef = useRef(false);
+  const transcriptionRuntimeReadyRef = useRef(false);
 
   const upsertMessages = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) {
@@ -381,20 +402,147 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     });
   }, []);
 
-  const disconnectRoom = useCallback(() => {
-    roomRef.current?.disconnect();
-    roomRef.current = null;
+  const releaseVoiceRuntimeIfIdle = useCallback(
+    async (options?: { keepalive?: boolean }) => {
+      const participantIdentity = participantIdentityRef.current.trim();
+      if (!participantIdentity) {
+        return;
+      }
 
-    if (audioContainerRef.current) {
-      audioContainerRef.current.innerHTML = "";
+      try {
+        await fetch(`/api/rooms/${encodeURIComponent(roomId)}/voice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            participantIdentity,
+          }),
+          keepalive: options?.keepalive,
+        });
+      } catch {
+        // Ignore cleanup failures; retry happens on next voice lifecycle transition.
+      }
+    },
+    [roomId],
+  );
+
+  const clearConnectionIdleTimer = useCallback(() => {
+    if (inactivityTimerRef.current !== null) {
+      window.clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+  }, []);
+
+  const disableLocalMicrophone = useCallback(async (room?: Room | null) => {
+    const targetRoom = room ?? roomRef.current;
+    if (!targetRoom) {
+      return;
     }
 
-    setConnectionState("disconnected");
+    micEnabledRef.current = false;
     setMicEnabled(false);
-    setParticipantId("");
-    setTranscriptionState("idle");
-    connectStartedAtRef.current = null;
+
+    await targetRoom.localParticipant.setMicrophoneEnabled(false);
+
+    const microphoneTracks = [...targetRoom.localParticipant.audioTrackPublications.values()]
+      .filter((publication) => publication.source === Track.Source.Microphone)
+      .map((publication) => publication.track)
+      .filter((track): track is NonNullable<typeof track> => Boolean(track));
+
+    await Promise.allSettled(
+      microphoneTracks.map(async (track) => {
+        await targetRoom.localParticipant.unpublishTrack(track, true).catch(() => undefined);
+        track.stop();
+      }),
+    );
   }, []);
+
+  const syncVoiceSessionState = useCallback((room?: Room | null) => {
+    const targetRoom = room ?? roomRef.current;
+    const voiceProvider = voiceProviderRef.current;
+
+    if (!targetRoom) {
+      setMicEnabled(false);
+      setTranscriptionState(getIdleTranscriptionState(voiceProvider));
+      return;
+    }
+
+    const localVoiceActive = hasPublishedMicrophoneTrack(targetRoom.localParticipant);
+    const remoteVoiceActive = [...targetRoom.remoteParticipants.values()].some((participant) =>
+      hasPublishedMicrophoneTrack(participant),
+    );
+    const hasActiveVoiceSession = localVoiceActive || remoteVoiceActive;
+    const transcriberConnected = hasConnectedTranscriberParticipant(targetRoom);
+    const transcriptionRuntimeReady =
+      transcriptionRuntimeReadyRef.current || transcriberConnected;
+
+    if (transcriberConnected) {
+      transcriptionRuntimeReadyRef.current = true;
+    }
+
+    setMicEnabled(localVoiceActive);
+    setTranscriptionState(
+      !voiceProvider.transcriptionEnabled || !voiceProvider.transcriptionReady
+        ? "disabled"
+        : voiceCallStartingRef.current
+          ? hasActiveVoiceSession && transcriptionRuntimeReady
+            ? "ready"
+            : "starting"
+          : !hasActiveVoiceSession
+            ? "idle"
+            : transcriptionRuntimeReady
+              ? "ready"
+              : "starting",
+    );
+  }, []);
+
+  const disconnectRoom = useCallback(
+    (options?: { updateState?: boolean }) => {
+      const updateState = options?.updateState ?? true;
+
+      clearConnectionIdleTimer();
+      const activeRoom = roomRef.current;
+      roomRef.current = null;
+      voiceCallStartingRef.current = false;
+      transcriptionRuntimeReadyRef.current = false;
+      void disableLocalMicrophone(activeRoom).catch(() => undefined);
+      activeRoom?.disconnect();
+
+      if (audioContainerRef.current) {
+        audioContainerRef.current.innerHTML = "";
+      }
+
+      if (!updateState) {
+        return;
+      }
+
+      setConnectionState("disconnected");
+      setMicEnabled(false);
+      setParticipantId("");
+      setTranscriptionState(getIdleTranscriptionState(voiceProviderRef.current));
+    },
+    [clearConnectionIdleTimer, disableLocalMicrophone],
+  );
+
+  const armConnectionIdleTimer = useCallback(() => {
+    clearConnectionIdleTimer();
+
+    if (!roomRef.current || roomMeta.status === "ENDED") {
+      return;
+    }
+
+    inactivityTimerRef.current = window.setTimeout(() => {
+      setRoomError(
+        t(
+          "3分钟未发言，房间连接已断开，请重新连接。",
+          "Disconnected after 3 minutes of inactivity. Reconnect to continue.",
+        ),
+      );
+      if (micEnabledRef.current) {
+        void releaseVoiceRuntimeIfIdle();
+      }
+      disconnectRoom();
+    }, ROOM_CONNECTION_IDLE_TIMEOUT_MS);
+  }, [clearConnectionIdleTimer, disconnectRoom, releaseVoiceRuntimeIfIdle, roomMeta.status, t]);
 
   const fetchRoomMeta = useCallback(async () => {
     const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/meta`, {
@@ -434,17 +582,14 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     [roomId, t, upsertMessages],
   );
 
-  const connectRoom = useCallback(async (options?: { enableMicrophone?: boolean }) => {
-    const enableMicrophone = options?.enableMicrophone ?? false;
-
-    if (connectionState !== "disconnected" || roomMeta.status === "ENDED") {
+  const connectRoom = useCallback(async () => {
+    if (roomRef.current || connectionState !== "disconnected" || roomMeta.status === "ENDED") {
       return;
     }
 
     setRoomError("");
     setConnectionState("connecting");
-    setTranscriptionState(enableMicrophone ? "starting" : "idle");
-    connectStartedAtRef.current = Date.now();
+    let room: Room | null = null;
 
     try {
       const tokenRes = await fetch("/api/livekit/token", {
@@ -452,7 +597,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
-          connectionMode: enableMicrophone ? "voice" : "data",
+          connectionMode: "data",
         }),
       });
       const tokenPayload = (await tokenRes.json()) as TokenResponse;
@@ -460,12 +605,13 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         throw new Error(tokenPayload.error ?? t("获取 LiveKit Token 失败", "Failed to fetch LiveKit token"));
       }
 
+      voiceProviderRef.current = tokenPayload.providers.voice;
       setRoomMeta((current) => ({
         ...current,
         providers: tokenPayload.providers,
       }));
 
-      const room = new Room({
+      room = new Room({
         adaptiveStream: true,
         dynacast: true,
       });
@@ -488,12 +634,63 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       });
 
       room.on(RoomEvent.Disconnected, () => {
+        if (roomRef.current !== room) {
+          return;
+        }
+
+        if (micEnabledRef.current) {
+          void releaseVoiceRuntimeIfIdle();
+        }
         void fetchRoomMeta().catch(() => undefined);
         disconnectRoom();
       });
-      room.on(RoomEvent.ParticipantConnected, (participant) => {
-        if (participant.kind === ParticipantKind.AGENT) {
-          markTranscriptionReady();
+      room.on(RoomEvent.ParticipantConnected, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.ParticipantDisconnected, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.TrackPublished, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.TrackUnpublished, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.TrackMuted, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.TrackUnmuted, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.LocalTrackPublished, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.LocalTrackUnpublished, () => {
+        if (roomRef.current === room) {
+          syncVoiceSessionState(room);
+        }
+      });
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        if (roomRef.current !== room) {
+          return;
+        }
+
+        if (speakers.some((participant) => participant.isLocal)) {
+          armConnectionIdleTimer();
         }
       });
       room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
@@ -507,46 +704,37 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         }
 
         upsertMessages([event.message]);
-        if (event.message.type === "transcript") {
-          markTranscriptionReady();
+        if (event.message.type === "transcript" && roomRef.current === room) {
+          transcriptionRuntimeReadyRef.current = true;
+          syncVoiceSessionState(room);
         }
       });
 
       await room.connect(tokenPayload.livekitUrl, tokenPayload.token);
       await room.localParticipant.setCameraEnabled(false);
-      await room.localParticipant.setMicrophoneEnabled(enableMicrophone);
-
-      if (enableMicrophone) {
-        if (!tokenPayload.transcriberEnabled) {
-          setTranscriptionState("disabled");
-        } else if (
-          [...room.remoteParticipants.values()].some(
-            (participant) => participant.kind === ParticipantKind.AGENT,
-          )
-        ) {
-          markTranscriptionReady();
-        }
-      } else {
-        setTranscriptionState("idle");
-      }
+      await room.localParticipant.setMicrophoneEnabled(false);
 
       roomRef.current = room;
       setParticipantId(tokenPayload.identity);
-      setMicEnabled(enableMicrophone);
       setConnectionState("connected");
+      syncVoiceSessionState(room);
+      armConnectionIdleTimer();
       void fetchMessages(latestMessageCreatedAtRef.current).catch(() => undefined);
     } catch (error) {
+      room?.disconnect();
       setRoomError(error instanceof Error ? error.message : t("连接房间失败", "Failed to connect room"));
       disconnectRoom();
     }
   }, [
+    armConnectionIdleTimer,
     connectionState,
     disconnectRoom,
     fetchMessages,
     fetchRoomMeta,
-    markTranscriptionReady,
+    releaseVoiceRuntimeIfIdle,
     roomId,
     roomMeta.status,
+    syncVoiceSessionState,
     t,
     upsertMessages,
   ]);
@@ -567,36 +755,98 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       );
     }
 
+    voiceProviderRef.current = tokenPayload.providers.voice;
     setRoomMeta((current) => ({
       ...current,
       providers: tokenPayload.providers,
     }));
 
     if (!tokenPayload.transcriberEnabled) {
+      transcriptionRuntimeReadyRef.current = false;
       setTranscriptionState("disabled");
-      return;
+      return {
+        transcriberEnabled: false,
+      };
     }
 
-    setTranscriptionState((current) => (current === "ready" ? current : "starting"));
+    transcriptionRuntimeReadyRef.current = roomRef.current
+      ? hasConnectedTranscriberParticipant(roomRef.current)
+      : false;
+    setTranscriptionState("starting");
+    return {
+      transcriberEnabled: true,
+    };
   }, [roomId, t]);
 
-  const toggleMic = useCallback(async () => {
-    if (!roomRef.current || connectionState !== "connected") {
+  const startVoiceCall = useCallback(async () => {
+    const activeRoom = roomRef.current;
+    if (
+      !activeRoom ||
+      connectionState !== "connected" ||
+      roomMeta.status === "ENDED" ||
+      micEnabled ||
+      transcriptionState === "starting"
+    ) {
       return;
     }
 
-    const nextMicState = !micEnabled;
+    setRoomError("");
+    setTranscriptionState("starting");
+    voiceCallStartingRef.current = true;
+    transcriptionRuntimeReadyRef.current = false;
     try {
-      if (nextMicState) {
-        await ensureVoiceRuntime();
-      }
+      await ensureVoiceRuntime();
 
-      await roomRef.current.localParticipant.setMicrophoneEnabled(nextMicState);
-      setMicEnabled(nextMicState);
+      await activeRoom.localParticipant.setMicrophoneEnabled(true);
+      if (roomRef.current === activeRoom) {
+        syncVoiceSessionState(activeRoom);
+        armConnectionIdleTimer();
+      }
     } catch (error) {
-      setRoomError(error instanceof Error ? error.message : t("切换麦克风失败", "Failed to toggle microphone"));
+      setTranscriptionState(getIdleTranscriptionState(voiceProviderRef.current));
+      setRoomError(error instanceof Error ? error.message : t("开启通话失败", "Failed to start call"));
+    } finally {
+      voiceCallStartingRef.current = false;
     }
-  }, [connectionState, ensureVoiceRuntime, micEnabled, t]);
+  }, [
+    armConnectionIdleTimer,
+    connectionState,
+    ensureVoiceRuntime,
+    micEnabled,
+    roomMeta.status,
+    transcriptionState,
+    syncVoiceSessionState,
+    t,
+  ]);
+
+  const leaveVoiceCall = useCallback(async () => {
+    const activeRoom = roomRef.current;
+    if (!activeRoom || connectionState !== "connected" || !micEnabled) {
+      return;
+    }
+
+    setRoomError("");
+    try {
+      voiceCallStartingRef.current = false;
+      transcriptionRuntimeReadyRef.current = false;
+      await disableLocalMicrophone(activeRoom);
+      if (roomRef.current === activeRoom) {
+        syncVoiceSessionState(activeRoom);
+        armConnectionIdleTimer();
+      }
+      await releaseVoiceRuntimeIfIdle();
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : t("退出通话失败", "Failed to leave call"));
+    }
+  }, [
+    armConnectionIdleTimer,
+    connectionState,
+    disableLocalMicrophone,
+    micEnabled,
+    releaseVoiceRuntimeIfIdle,
+    syncVoiceSessionState,
+    t,
+  ]);
 
   async function endConversation() {
     if (!roomMeta.isCreator || roomMeta.status === "ENDED") {
@@ -622,6 +872,9 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
         status: payload.room!.status,
         endedAt: payload.room!.endedAt,
       }));
+      voiceCallStartingRef.current = false;
+      transcriptionRuntimeReadyRef.current = false;
+      await disableLocalMicrophone(roomRef.current).catch(() => undefined);
       disconnectRoom();
       void fetchMessages(latestMessageCreatedAtRef.current).catch(() => undefined);
     } catch (error) {
@@ -660,6 +913,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
 
       setChatInput("");
       upsertMessages([payload.message]);
+      armConnectionIdleTimer();
     } catch (error) {
       setRoomError(error instanceof Error ? error.message : t("发送消息失败", "Failed to send message"));
     } finally {
@@ -681,7 +935,7 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   }
 
   useEffect(() => {
-    autoConnectAttemptedRef.current = false;
+    setHasAutoConnectAttempted(false);
     latestMessageCreatedAtRef.current = null;
     setMessages([]);
     setRoomError("");
@@ -691,13 +945,34 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   }, [fetchMessages, fetchRoomMeta, t]);
 
   useEffect(() => {
+    micEnabledRef.current = micEnabled;
+  }, [micEnabled]);
+
+  useEffect(() => {
+    participantIdentityRef.current = participantId;
+  }, [participantId]);
+
+  useEffect(() => {
+    voiceProviderRef.current = roomMeta.providers.voice;
+    if (roomRef.current) {
+      if (transcriptionState === "starting") {
+        return;
+      }
+      syncVoiceSessionState(roomRef.current);
+      return;
+    }
+
+    setTranscriptionState(getIdleTranscriptionState(roomMeta.providers.voice));
+  }, [roomMeta.providers.voice, syncVoiceSessionState, transcriptionState]);
+
+  useEffect(() => {
     if (roomMeta.status === "ENDED" && connectionState !== "disconnected") {
       disconnectRoom();
     }
   }, [connectionState, disconnectRoom, roomMeta.status]);
 
   useEffect(() => {
-    if (autoConnectAttemptedRef.current) {
+    if (hasAutoConnectAttempted) {
       return;
     }
     if (roomMeta.status === "ENDED") {
@@ -707,9 +982,9 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
       return;
     }
 
-    autoConnectAttemptedRef.current = true;
-    void connectRoom({ enableMicrophone: false });
-  }, [connectRoom, connectionState, roomMeta.status]);
+    setHasAutoConnectAttempted(true);
+    void connectRoom();
+  }, [connectRoom, connectionState, hasAutoConnectAttempted, roomMeta.status]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -728,38 +1003,31 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
   }, [chatInput]);
 
   useEffect(() => {
-    if (connectionState !== "connected" || transcriptionState !== "starting") {
-      return;
-    }
-
-    const connectStartedAt = connectStartedAtRef.current;
-    if (connectStartedAt === null) {
-      return;
-    }
-
-    const hasTranscriptAfterConnect = messages.some((message) => {
-      if (message.type !== "transcript") {
-        return false;
+    return () => {
+      if (micEnabledRef.current) {
+        void releaseVoiceRuntimeIfIdle();
       }
-
-      const createdAtMs = new Date(message.createdAt).getTime();
-      if (Number.isNaN(createdAtMs)) {
-        return false;
-      }
-
-      return createdAtMs >= connectStartedAt;
-    });
-
-    if (hasTranscriptAfterConnect) {
-      markTranscriptionReady();
-    }
-  }, [connectionState, markTranscriptionReady, messages, transcriptionState]);
+      voiceCallStartingRef.current = false;
+      transcriptionRuntimeReadyRef.current = false;
+      disconnectRoom({ updateState: false });
+    };
+  }, [disconnectRoom, releaseVoiceRuntimeIfIdle]);
 
   useEffect(() => {
-    return () => {
-      disconnectRoom();
+    const handlePageHide = () => {
+      if (micEnabledRef.current) {
+        void releaseVoiceRuntimeIfIdle({ keepalive: true });
+      }
+      voiceCallStartingRef.current = false;
+      transcriptionRuntimeReadyRef.current = false;
+      disconnectRoom({ updateState: false });
     };
-  }, [disconnectRoom]);
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [disconnectRoom, releaseVoiceRuntimeIfIdle]);
 
   useEffect(() => {
     if (warmupRequestedRef.current) {
@@ -770,18 +1038,15 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
     }
 
     warmupRequestedRef.current = true;
-    const timer = window.setTimeout(() => {
-      void fetch(`/api/rooms/${encodeURIComponent(roomId)}/warmup`, {
-        method: "POST",
-      }).catch(() => undefined);
-    }, 2500);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
+    void fetch(`/api/rooms/${encodeURIComponent(roomId)}/warmup`, {
+      method: "POST",
+    }).catch(() => undefined);
   }, [roomId, roomMeta.status]);
 
   const isEnded = roomMeta.status === "ENDED";
+  const isInitialConnectionPending =
+    connectionState === "disconnected" && !hasAutoConnectAttempted && !isEnded;
+  const roomConnectionStatusClass = isInitialConnectionPending ? "connecting" : connectionState;
 
   return (
     <main className="room-page">
@@ -790,23 +1055,21 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
           <div className="room-header-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <h1 style={{ fontSize: '1.5rem', margin: 0 }}>{roomId}</h1>
-              <span className={`room-status ${connectionState}`}>
+              <span className={`room-status ${roomConnectionStatusClass}`}>
                 {connectionState === "connected"
-                  ? micEnabled
-                    ? t("通话中", "In Call")
-                    : t("已连接", "Connected")
-                  : connectionState === "connecting"
-                    ? t("连接中", "Connecting")
-                    : t("未开始", "Not Started")}
+                  ? t("房间已连接", "Room Connected")
+                  : connectionState === "connecting" || isInitialConnectionPending
+                    ? t("连接房间中", "Connecting Room")
+                    : t("房间未连接", "Room Disconnected")}
               </span>
               <span className={`room-status transcription-status ${transcriptionState}`}>
                 {transcriptionState === "ready"
-                  ? t("转录中", "Transcribing")
+                  ? t("语音转录已开启", "Voice Transcription On")
                   : transcriptionState === "starting"
-                    ? t("启动中", "Starting")
+                    ? t("语音转录启动中", "Voice Transcription Starting")
                     : transcriptionState === "disabled"
-                      ? t("未启用", "Disabled")
-                      : t("未转录", "Not Transcribing")}
+                      ? t("语音转录不可用", "Voice Transcription Unavailable")
+                      : t("语音转录未开始", "Voice Transcription Not Started")}
               </span>
             </div>
             <div className="room-meta-row">
@@ -932,26 +1195,26 @@ export default function RoomPageClient({ roomId, username }: RoomPageClientProps
           </button>
           
           {connectionState === "connected" ? (
-            <>
-              <button type="button" onClick={toggleMic} disabled={isEnded} className={micEnabled ? "primary-btn" : "ghost-btn"}>
-                {micEnabled ? t("静音", "Mute") : t("开麦", "Unmute")}
-              </button>
-              <button type="button" className="ghost-btn" onClick={disconnectRoom}>
-                {t("挂断语音", "Hang Up")}
-              </button>
-            </>
-          ) : (
+            <button
+              type="button"
+              className={micEnabled ? "primary-btn" : "ghost-btn"}
+              onClick={() => void (micEnabled ? leaveVoiceCall() : startVoiceCall())}
+              disabled={isEnded}
+            >
+              {micEnabled ? t("退出通话", "Leave Call") : t("开始通话", "Start Call")}
+            </button>
+          ) : hasAutoConnectAttempted && !isEnded ? (
             <button
               type="button"
               className="ghost-btn"
-              onClick={() => void connectRoom({ enableMicrophone: true })}
-              disabled={connectionState === "connecting" || isEnded}
+              onClick={() => void connectRoom()}
+              disabled={connectionState === "connecting"}
             >
               {connectionState === "connecting"
-                ? t("连接中...", "Connecting...")
-                : t("开启语音", "Start Voice")}
+                ? t("重连中...", "Reconnecting...")
+                : t("重新连接", "Reconnect")}
             </button>
-          )}
+          ) : null}
         </form>
 
         <div ref={audioContainerRef} className="audio-container" />

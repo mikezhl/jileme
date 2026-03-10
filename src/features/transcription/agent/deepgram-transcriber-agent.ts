@@ -9,10 +9,21 @@ import {
   ServerOptions,
   cli,
   defineAgent,
+  runWithJobContextAsync,
+  stt,
   type JobContext,
-  voice,
 } from "@livekit/agents";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
+import {
+  AudioStream,
+  type Participant,
+  type RemoteAudioTrack,
+  type RemoteParticipant,
+  type RemoteTrackPublication,
+  RoomEvent,
+  TrackKind,
+  TrackSource,
+} from "@livekit/rtc-node";
 import { enqueueRealtimeAnalysisEvent } from "@/features/analysis/service/analysis-events";
 import {
   formatCompactAnalysisError,
@@ -28,6 +39,8 @@ const DEFAULT_AGENT_NAME = "deepgram-transcriber";
 const AGENT_PARTICIPANT_KIND = 4;
 const TRANSCRIPT_UTTERANCE_GAP_MS = parseNumberEnv(process.env.TRANSCRIPT_UTTERANCE_GAP_MS, 2000);
 
+type SpeechState = "listening" | "speaking";
+
 type TranscribedParticipant = {
   identity: string;
   name?: string;
@@ -42,6 +55,20 @@ type TranscriptWindowState = {
   interimText: string;
   lastPersistedText: string;
   persistChain: Promise<void>;
+};
+
+type ParticipantTranscriptionSession = {
+  participant: TranscribedParticipant;
+  roomRefId: string;
+  sttOptions: deepgram.STTOptions;
+  sttProvider: deepgram.STT;
+  speechStream: stt.SpeechStream;
+  transcriptWindow: TranscriptWindowState | null;
+  audioStream: AudioStream | null;
+  audioTrackSid: string | null;
+  speechState: SpeechState;
+  closed: boolean;
+  consumeTask: Promise<void>;
 };
 
 function logInfo(message: string, payload?: Record<string, unknown>) {
@@ -272,6 +299,382 @@ async function upsertTranscriptMessage({
   return message;
 }
 
+function updateSpeechState(session: ParticipantTranscriptionSession, roomId: string, nextState: SpeechState) {
+  if (session.speechState === nextState) {
+    return;
+  }
+
+  const previousState = session.speechState;
+  session.speechState = nextState;
+  logInfo("User state changed", {
+    roomId,
+    participantIdentity: session.participant.identity,
+    oldState: previousState,
+    newState: nextState,
+  });
+}
+
+function getRemoteParticipantMicrophonePublication(
+  participant: RemoteParticipant,
+): RemoteTrackPublication | null {
+  for (const publication of participant.trackPublications.values()) {
+    if (publication.source === TrackSource.SOURCE_MICROPHONE) {
+      return publication;
+    }
+  }
+
+  return null;
+}
+
+async function clearParticipantAudioInput(
+  session: ParticipantTranscriptionSession,
+  roomId: string,
+  reason: string,
+  flush = true,
+) {
+  const previousTrackSid = session.audioTrackSid;
+  const currentAudioStream = session.audioStream;
+  if (!previousTrackSid && !currentAudioStream) {
+    return;
+  }
+
+  session.audioTrackSid = null;
+  session.audioStream = null;
+  updateSpeechState(session, roomId, "listening");
+
+  if (flush && !session.closed) {
+    try {
+      session.speechStream.flush();
+    } catch {
+      // Ignore flush races during disconnect.
+    }
+  }
+
+  try {
+    session.speechStream.detachInputStream();
+  } catch {
+    // Ignore detach races during disconnect.
+  }
+
+  if (currentAudioStream) {
+    await currentAudioStream.cancel(reason).catch(() => undefined);
+  }
+
+  logInfo("Detached participant microphone stream", {
+    roomId,
+    participantIdentity: session.participant.identity,
+    trackSid: previousTrackSid,
+    reason,
+  });
+}
+
+async function attachParticipantAudioInput(
+  session: ParticipantTranscriptionSession,
+  roomId: string,
+  track: RemoteAudioTrack,
+  trackSid: string | null,
+) {
+  if (session.audioTrackSid === trackSid && session.audioStream) {
+    return;
+  }
+
+  await clearParticipantAudioInput(session, roomId, "switch_track");
+
+  const audioStream = new AudioStream(track, {
+    sampleRate: session.sttOptions.sampleRate,
+    numChannels: session.sttOptions.numChannels,
+  });
+  session.speechStream.updateInputStream(
+    audioStream as unknown as Parameters<stt.SpeechStream["updateInputStream"]>[0],
+  );
+  session.audioStream = audioStream;
+  session.audioTrackSid = trackSid;
+
+  logInfo("Attached participant microphone stream", {
+    roomId,
+    participantIdentity: session.participant.identity,
+    trackSid,
+    sampleRate: session.sttOptions.sampleRate,
+    numChannels: session.sttOptions.numChannels,
+  });
+}
+
+async function syncParticipantMicrophoneInput({
+  session,
+  participant,
+  roomId,
+}: {
+  session: ParticipantTranscriptionSession;
+  participant: RemoteParticipant;
+  roomId: string;
+}) {
+  if (session.closed) {
+    return;
+  }
+
+  const publication = getRemoteParticipantMicrophonePublication(participant);
+  if (!publication) {
+    await clearParticipantAudioInput(session, roomId, "microphone_unpublished");
+    return;
+  }
+
+  if (!publication.subscribed) {
+    publication.setSubscribed(true);
+  }
+
+  if (publication.muted) {
+    await clearParticipantAudioInput(session, roomId, "microphone_muted");
+    return;
+  }
+
+  if (!publication.track || publication.kind !== TrackKind.KIND_AUDIO) {
+    await clearParticipantAudioInput(session, roomId, "microphone_track_missing");
+    return;
+  }
+
+  await attachParticipantAudioInput(
+    session,
+    roomId,
+    publication.track as RemoteAudioTrack,
+    publication.sid ?? null,
+  );
+}
+
+function handleTranscriptUpdate({
+  roomId,
+  participant,
+  roomRefId,
+  session,
+  transcript,
+  isFinal,
+  language,
+  relayRoomServiceClient,
+}: {
+  roomId: string;
+  participant: TranscribedParticipant;
+  roomRefId: string;
+  session: ParticipantTranscriptionSession;
+  transcript: string;
+  isFinal: boolean;
+  language: string | undefined;
+  relayRoomServiceClient: RoomServiceClient | null;
+}) {
+  const normalizedTranscript = normalizeTranscriptText(transcript);
+  if (!normalizedTranscript) {
+    return;
+  }
+
+  const nowMs = Date.now();
+  let window = session.transcriptWindow;
+  if (!window || nowMs - window.lastActivityAt > TRANSCRIPT_UTTERANCE_GAP_MS) {
+    window = createTranscriptWindowState(roomId, participant.identity, nowMs);
+    session.transcriptWindow = window;
+    logInfo("Started transcript utterance window", {
+      roomId,
+      participantIdentity: participant.identity,
+      externalRef: window.externalRef,
+      startedAt: new Date(window.windowStartedAt).toISOString(),
+    });
+  }
+
+  window.lastActivityAt = nowMs;
+  if (isFinal) {
+    window.committedText = mergeTranscriptText(window.committedText, normalizedTranscript);
+    window.interimText = "";
+  } else {
+    window.interimText = normalizedTranscript;
+  }
+
+  const composedTranscript = isFinal
+    ? window.committedText
+    : mergeTranscriptText(window.committedText, window.interimText);
+  if (!composedTranscript || composedTranscript === window.lastPersistedText) {
+    return;
+  }
+
+  window.lastPersistedText = composedTranscript;
+
+  const externalRef = window.externalRef;
+  const windowStartedAt = window.windowStartedAt;
+  const transcriptForSave = composedTranscript;
+  window.persistChain = window.persistChain
+    .catch(() => undefined)
+    .then(async () => {
+      const persistedMessage = await upsertTranscriptMessage({
+        roomRefId,
+        participant,
+        transcript: transcriptForSave,
+        externalRef,
+        windowStartedAt,
+      });
+      if (!persistedMessage) {
+        return;
+      }
+
+      try {
+        await enqueueRealtimeAnalysisEvent(roomRefId, persistedMessage.id);
+      } catch (enqueueError) {
+        if (isAnalysisSchemaMissingError(enqueueError)) {
+          logWarn("Analysis queue unavailable while enqueuing transcript event", {
+            roomId,
+            participantIdentity: participant.identity,
+            messageId: persistedMessage.id,
+            hint: getAnalysisSchemaFixHint(),
+            error: formatCompactAnalysisError(enqueueError),
+          });
+        } else {
+          logWarn("Failed to enqueue transcript analysis event", {
+            roomId,
+            participantIdentity: participant.identity,
+            messageId: persistedMessage.id,
+            error: formatCompactAnalysisError(enqueueError),
+          });
+        }
+      }
+
+      const chatMessage = toChatMessage(persistedMessage);
+      if (relayRoomServiceClient) {
+        void publishChatMessageViaLivekit(relayRoomServiceClient, roomId, chatMessage).catch(
+          (relayError) => {
+            logWarn("Failed to relay transcript through LiveKit data channel", {
+              roomId,
+              participantIdentity: participant.identity,
+              messageId: chatMessage.id,
+              error: relayError instanceof Error ? relayError.message : relayError,
+            });
+          },
+        );
+      }
+
+      logInfo("Transcript upserted", {
+        roomId,
+        participantIdentity: participant.identity,
+        messageId: chatMessage.id,
+        externalRef,
+        isFinal,
+        text: transcriptForSave,
+      });
+    })
+    .catch((error) => {
+      logError("Failed to upsert transcript", error, {
+        roomId,
+        participantIdentity: participant.identity,
+        externalRef,
+      });
+    });
+
+  logInfo("Transcript update", {
+    roomId,
+    participantIdentity: participant.identity,
+    isFinal,
+    text: transcriptForSave,
+    language,
+  });
+}
+
+async function consumeParticipantSpeechStream({
+  session,
+  roomId,
+  relayRoomServiceClient,
+}: {
+  session: ParticipantTranscriptionSession;
+  roomId: string;
+  relayRoomServiceClient: RoomServiceClient | null;
+}) {
+  try {
+    for await (const event of session.speechStream) {
+      if (session.closed) {
+        break;
+      }
+
+      switch (event.type) {
+        case stt.SpeechEventType.START_OF_SPEECH: {
+          updateSpeechState(session, roomId, "speaking");
+          break;
+        }
+        case stt.SpeechEventType.END_OF_SPEECH: {
+          updateSpeechState(session, roomId, "listening");
+          break;
+        }
+        case stt.SpeechEventType.INTERIM_TRANSCRIPT:
+        case stt.SpeechEventType.FINAL_TRANSCRIPT: {
+          const alternative = event.alternatives?.[0];
+          if (!alternative?.text) {
+            break;
+          }
+
+          handleTranscriptUpdate({
+            roomId,
+            participant: session.participant,
+            roomRefId: session.roomRefId,
+            session,
+            transcript: alternative.text,
+            isFinal: event.type === stt.SpeechEventType.FINAL_TRANSCRIPT,
+            language: alternative.language,
+            relayRoomServiceClient,
+          });
+          break;
+        }
+        default: {
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    if (!session.closed) {
+      logError("Participant speech stream failed", error, {
+        roomId,
+        participantIdentity: session.participant.identity,
+      });
+    }
+  }
+}
+
+async function closeParticipantSession({
+  session,
+  sessionRegistry,
+  roomId,
+  reason,
+}: {
+  session: ParticipantTranscriptionSession;
+  sessionRegistry: Map<string, ParticipantTranscriptionSession>;
+  roomId: string;
+  reason: string;
+}) {
+  if (session.closed) {
+    return;
+  }
+
+  session.closed = true;
+  sessionRegistry.delete(session.participant.identity);
+
+  await clearParticipantAudioInput(session, roomId, reason, false);
+
+  try {
+    session.speechStream.close();
+  } catch {
+    // Ignore close races during shutdown.
+  }
+
+  await session.consumeTask.catch(() => undefined);
+  await session.transcriptWindow?.persistChain.catch(() => undefined);
+  session.transcriptWindow = null;
+
+  await session.sttProvider.close().catch((error) => {
+    logWarn("Failed to close Deepgram provider", {
+      roomId,
+      participantIdentity: session.participant.identity,
+      error: error instanceof Error ? error.message : error,
+    });
+  });
+
+  logInfo("Participant transcription session closed", {
+    roomId,
+    participantIdentity: session.participant.identity,
+    reason,
+  });
+}
+
 async function startParticipantSession({
   ctx,
   participant,
@@ -279,15 +682,13 @@ async function startParticipantSession({
   deepgramApiKey,
   relayRoomServiceClient,
   sessionRegistry,
-  transcriptWindowRegistry,
 }: {
   ctx: JobContext;
   participant: TranscribedParticipant;
   roomId: string;
   deepgramApiKey: string | null;
   relayRoomServiceClient: RoomServiceClient | null;
-  sessionRegistry: Map<string, voice.AgentSession>;
-  transcriptWindowRegistry: Map<string, TranscriptWindowState>;
+  sessionRegistry: Map<string, ParticipantTranscriptionSession>;
 }) {
   if (participant.kind === AGENT_PARTICIPANT_KIND) {
     logInfo("Skip agent participant", {
@@ -309,158 +710,38 @@ async function startParticipantSession({
   if (!deepgramApiKey?.trim()) {
     throw new Error("Deepgram API key is missing for this room");
   }
+
   const roomRefId = await resolveActiveRoomRefId(roomId);
   if (!roomRefId) {
     return;
   }
 
   const sttOptions = buildDeepgramOptions(deepgramApiKey);
-  const session = new voice.AgentSession({
-    turnDetection: "stt",
-    stt: new deepgram.STT(sttOptions),
-  });
+  const sttProvider = new deepgram.STT(sttOptions);
+  const speechStream = sttProvider.stream();
+  const session: ParticipantTranscriptionSession = {
+    participant,
+    roomRefId,
+    sttOptions,
+    sttProvider,
+    speechStream,
+    transcriptWindow: null,
+    audioStream: null,
+    audioTrackSid: null,
+    speechState: "listening",
+    closed: false,
+    consumeTask: Promise.resolve(),
+  };
 
-  logInfo("Starting participant transcription session", {
-    roomId,
-    participantIdentity: participant.identity,
-    deepgramModel: sttOptions.model,
-    deepgramLanguage: sttOptions.language,
-    endpointing: sttOptions.endpointing,
-    interimResults: sttOptions.interimResults,
-  });
-
-  session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (event) => {
-    const transcript = normalizeTranscriptText(event.transcript);
-    if (!transcript) {
-      return;
-    }
-
-    const nowMs = Date.now();
-    let window = transcriptWindowRegistry.get(participant.identity);
-    if (!window || nowMs - window.lastActivityAt > TRANSCRIPT_UTTERANCE_GAP_MS) {
-      window = createTranscriptWindowState(roomId, participant.identity, nowMs);
-      transcriptWindowRegistry.set(participant.identity, window);
-      logInfo("Started transcript utterance window", {
-        roomId,
-        participantIdentity: participant.identity,
-        externalRef: window.externalRef,
-        startedAt: new Date(window.windowStartedAt).toISOString(),
-      });
-    }
-    window.lastActivityAt = nowMs;
-
-    if (event.isFinal) {
-      window.committedText = mergeTranscriptText(window.committedText, transcript);
-      window.interimText = "";
-    } else {
-      window.interimText = transcript;
-    }
-
-    const composedTranscript = event.isFinal
-      ? window.committedText
-      : mergeTranscriptText(window.committedText, window.interimText);
-    if (!composedTranscript || composedTranscript === window.lastPersistedText) {
-      return;
-    }
-
-    window.lastPersistedText = composedTranscript;
-
-    const externalRef = window.externalRef;
-    const windowStartedAt = window.windowStartedAt;
-    const transcriptForSave = composedTranscript;
-    window.persistChain = window.persistChain
-      .catch(() => undefined)
-      .then(async () => {
-        const persistedMessage = await upsertTranscriptMessage({
-          roomRefId,
-          participant,
-          transcript: transcriptForSave,
-          externalRef,
-          windowStartedAt,
-        });
-        if (!persistedMessage) {
-          return;
-        }
-
-        try {
-          await enqueueRealtimeAnalysisEvent(roomRefId, persistedMessage.id);
-        } catch (enqueueError) {
-          if (isAnalysisSchemaMissingError(enqueueError)) {
-            logWarn("Analysis queue unavailable while enqueuing transcript event", {
-              roomId,
-              participantIdentity: participant.identity,
-              messageId: persistedMessage.id,
-              hint: getAnalysisSchemaFixHint(),
-              error: formatCompactAnalysisError(enqueueError),
-            });
-          } else {
-            logWarn("Failed to enqueue transcript analysis event", {
-              roomId,
-              participantIdentity: participant.identity,
-              messageId: persistedMessage.id,
-              error: formatCompactAnalysisError(enqueueError),
-            });
-          }
-        }
-
-        const chatMessage = toChatMessage(persistedMessage);
-        if (relayRoomServiceClient) {
-          void publishChatMessageViaLivekit(relayRoomServiceClient, roomId, chatMessage).catch(
-            (relayError) => {
-              logWarn("Failed to relay transcript through LiveKit data channel", {
-                roomId,
-                participantIdentity: participant.identity,
-                messageId: chatMessage.id,
-                error: relayError instanceof Error ? relayError.message : relayError,
-              });
-            },
-          );
-        }
-
-        logInfo("Transcript upserted", {
-          roomId,
-          participantIdentity: participant.identity,
-          messageId: chatMessage.id,
-          externalRef,
-          isFinal: event.isFinal,
-          text: transcriptForSave,
-        });
-      })
-      .catch((error) => {
-        logError("Failed to upsert transcript", error, {
-          roomId,
-          participantIdentity: participant.identity,
-          externalRef,
-        });
-      });
-
-    logInfo("Transcript update", {
+  sttProvider.on("error", (event) => {
+    logError("Transcription stream error", event.error, {
       roomId,
       participantIdentity: participant.identity,
-      isFinal: event.isFinal,
-      text: transcriptForSave,
-      language: event.language,
+      recoverable: event.recoverable,
     });
   });
 
-  session.on(voice.AgentSessionEventTypes.Error, (event) => {
-    logError("Agent session error", event.error, {
-      roomId,
-      participantIdentity: participant.identity,
-    });
-  });
-
-  session.on(voice.AgentSessionEventTypes.UserStateChanged, (event) => {
-    logInfo("User state changed", {
-      roomId,
-      participantIdentity: participant.identity,
-      oldState: event.oldState,
-      newState: event.newState,
-    });
-  });
-
-  session.on(voice.AgentSessionEventTypes.MetricsCollected, (event) => {
-    const metrics = event.metrics;
+  sttProvider.on("metrics_collected", (metrics) => {
     logInfo("Metrics collected", {
       roomId,
       participantIdentity: participant.identity,
@@ -470,42 +751,85 @@ async function startParticipantSession({
     });
   });
 
-  session.on(voice.AgentSessionEventTypes.Close, (event) => {
-    sessionRegistry.delete(participant.identity);
-    transcriptWindowRegistry.delete(participant.identity);
-    logInfo("Participant transcription session closed", {
-      roomId,
-      participantIdentity: participant.identity,
-      reason: event.reason,
-    });
+  session.consumeTask = consumeParticipantSpeechStream({
+    session,
+    roomId,
+    relayRoomServiceClient,
   });
-
-  await session.start({
-    agent: new voice.Agent({
-      instructions:
-        "You are a transcription-only agent. Listen to participant audio and emit transcripts.",
-    }),
-    room: ctx.room,
-    inputOptions: {
-      participantIdentity: participant.identity,
-      audioEnabled: true,
-      textEnabled: false,
-      videoEnabled: false,
-    },
-    outputOptions: {
-      audioEnabled: false,
-      transcriptionEnabled: false,
-    },
-    record: false,
-  });
-
   sessionRegistry.set(participant.identity, session);
+
   logInfo("Participant transcription session started", {
     roomId,
     participantIdentity: participant.identity,
     deepgramModel: sttOptions.model,
     deepgramLanguage: sttOptions.language,
+    endpointing: sttOptions.endpointing,
+    interimResults: sttOptions.interimResults,
   });
+
+  const remoteParticipant = ctx.room.remoteParticipants.get(participant.identity);
+  if (remoteParticipant) {
+    await syncParticipantMicrophoneInput({
+      session,
+      participant: remoteParticipant,
+      roomId,
+    });
+  }
+}
+
+async function ensureParticipantSession({
+  ctx,
+  participant,
+  roomId,
+  deepgramApiKey,
+  relayRoomServiceClient,
+  sessionRegistry,
+  startingSessionRegistry,
+}: {
+  ctx: JobContext;
+  participant: TranscribedParticipant;
+  roomId: string;
+  deepgramApiKey: string | null;
+  relayRoomServiceClient: RoomServiceClient | null;
+  sessionRegistry: Map<string, ParticipantTranscriptionSession>;
+  startingSessionRegistry: Set<string>;
+}) {
+  if (participant.kind === AGENT_PARTICIPANT_KIND) {
+    logInfo("Skip agent participant", {
+      roomId,
+      participantIdentity: participant.identity,
+      participantKind: participant.kind,
+    });
+    return;
+  }
+
+  if (sessionRegistry.has(participant.identity)) {
+    return;
+  }
+
+  if (startingSessionRegistry.has(participant.identity)) {
+    logInfo("Participant session start already in progress", {
+      roomId,
+      participantIdentity: participant.identity,
+    });
+    return;
+  }
+
+  startingSessionRegistry.add(participant.identity);
+  try {
+    await runWithJobContextAsync(ctx, async () => {
+      await startParticipantSession({
+        ctx,
+        participant,
+        roomId,
+        deepgramApiKey,
+        relayRoomServiceClient,
+        sessionRegistry,
+      });
+    });
+  } finally {
+    startingSessionRegistry.delete(participant.identity);
+  }
 }
 
 async function resolveRoomDeepgramApiKey(roomId: string): Promise<string | null> {
@@ -536,12 +860,58 @@ export default defineAgent({
       hasDatabaseUrl: Boolean(process.env.DATABASE_URL?.trim()),
     });
 
-    const sessions = new Map<string, voice.AgentSession>();
-    const transcriptWindows = new Map<string, TranscriptWindowState>();
+    const sessions = new Map<string, ParticipantTranscriptionSession>();
+    const startingSessions = new Set<string>();
     const roomDeepgramApiKey = await resolveRoomDeepgramApiKey(roomId);
     const relayRoomServiceClient = createRelayRoomServiceClient();
 
-    ctx.addParticipantEntrypoint(async (jobCtx, participant) => {
+    const ensureAndSyncParticipant = async (participant: RemoteParticipant) => {
+      await ensureParticipantSession({
+        ctx,
+        participant,
+        roomId,
+        deepgramApiKey: roomDeepgramApiKey,
+        relayRoomServiceClient,
+        sessionRegistry: sessions,
+        startingSessionRegistry: startingSessions,
+      });
+
+      const session = sessions.get(participant.identity);
+      if (!session) {
+        return;
+      }
+
+      await syncParticipantMicrophoneInput({
+        session,
+        participant,
+        roomId,
+      });
+    };
+
+    const syncParticipantByIdentity = async (identity: string) => {
+      const participant = ctx.room.remoteParticipants.get(identity);
+      if (!participant) {
+        return;
+      }
+
+      await ensureAndSyncParticipant(participant);
+    };
+
+    const closeSessionByIdentity = async (identity: string, reason: string) => {
+      const session = sessions.get(identity);
+      if (!session) {
+        return;
+      }
+
+      await closeParticipantSession({
+        session,
+        sessionRegistry: sessions,
+        roomId,
+        reason,
+      });
+    };
+
+    ctx.addParticipantEntrypoint((jobCtx, participant) => {
       logInfo("Participant detected", {
         roomId,
         participantIdentity: participant.identity,
@@ -549,37 +919,151 @@ export default defineAgent({
         participantKind: participant.kind,
       });
 
-      try {
-        await startParticipantSession({
-          ctx: jobCtx,
-          participant,
-          roomId,
-          deepgramApiKey: roomDeepgramApiKey,
-          relayRoomServiceClient,
-          sessionRegistry: sessions,
-          transcriptWindowRegistry: transcriptWindows,
-        });
-      } catch (error) {
+      void runWithJobContextAsync(jobCtx, async () => {
+        await ensureAndSyncParticipant(participant);
+      }).catch((error) => {
         logError("Failed to start participant transcription session", error, {
           roomId,
           participantIdentity: participant.identity,
         });
-      }
+      });
+
+      return Promise.resolve();
     });
 
     // Use SUBSCRIBE_ALL so tracks published after participant join are also subscribed.
-    // In current agents runtime, AUDIO_ONLY only subscribes existing tracks at connect time.
+    // We maintain our own per-track audio streams and need microphone tracks as soon as they appear.
     await ctx.connect(undefined, AutoSubscribe.SUBSCRIBE_ALL);
     logInfo("Connected to room", { roomId, autoSubscribe: "SUBSCRIBE_ALL" });
+
+    ctx.room.on(RoomEvent.TrackSubscribed, (_track, publication, participant) => {
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) {
+        return;
+      }
+
+      void ensureAndSyncParticipant(participant).catch((error) => {
+        logError("Failed to attach participant microphone stream", error, {
+          roomId,
+          participantIdentity: participant.identity,
+          trackSid: publication.sid,
+        });
+      });
+    });
+
+    ctx.room.on(RoomEvent.TrackPublished, (publication, participant) => {
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) {
+        return;
+      }
+
+      void ensureAndSyncParticipant(participant).catch((error) => {
+        logError("Failed to react to microphone publication", error, {
+          roomId,
+          participantIdentity: participant.identity,
+          trackSid: publication.sid,
+        });
+      });
+    });
+
+    ctx.room.on(RoomEvent.TrackUnsubscribed, (_track, publication, participant) => {
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) {
+        return;
+      }
+
+      const session = sessions.get(participant.identity);
+      if (!session) {
+        return;
+      }
+
+      void clearParticipantAudioInput(session, roomId, "microphone_unsubscribed").catch((error) => {
+        logError("Failed to detach unsubscribed microphone stream", error, {
+          roomId,
+          participantIdentity: participant.identity,
+          trackSid: publication.sid,
+        });
+      });
+    });
+
+    ctx.room.on(RoomEvent.TrackUnpublished, (publication, participant) => {
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) {
+        return;
+      }
+
+      const session = sessions.get(participant.identity);
+      if (!session) {
+        return;
+      }
+
+      void syncParticipantMicrophoneInput({
+        session,
+        participant,
+        roomId,
+      }).catch((error) => {
+        logError("Failed to handle microphone unpublish", error, {
+          roomId,
+          participantIdentity: participant.identity,
+          trackSid: publication.sid,
+        });
+      });
+    });
+
+    const handleParticipantTrackStateChange = (participant: Participant) => {
+      if (participant.kind === AGENT_PARTICIPANT_KIND) {
+        return;
+      }
+
+      void syncParticipantByIdentity(participant.identity).catch((error) => {
+        logError("Failed to sync participant microphone state", error, {
+          roomId,
+          participantIdentity: participant.identity,
+        });
+      });
+    };
+
+    ctx.room.on(RoomEvent.TrackMuted, (publication, participant) => {
+      if (publication.source === TrackSource.SOURCE_MICROPHONE) {
+        handleParticipantTrackStateChange(participant);
+      }
+    });
+
+    ctx.room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
+      if (publication.source === TrackSource.SOURCE_MICROPHONE) {
+        handleParticipantTrackStateChange(participant);
+      }
+    });
+
+    ctx.room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      void closeSessionByIdentity(participant.identity, "participant_disconnected").catch((error) => {
+        logError("Failed to close participant transcription session", error, {
+          roomId,
+          participantIdentity: participant.identity,
+        });
+      });
+    });
+
+    await Promise.allSettled(
+      [...ctx.room.remoteParticipants.values()].map(async (participant) => {
+        logInfo("Existing participant detected", {
+          roomId,
+          participantIdentity: participant.identity,
+          participantName: participant.name,
+          participantKind: participant.kind,
+        });
+        await ensureAndSyncParticipant(participant);
+      }),
+    );
 
     ctx.addShutdownCallback(async () => {
       logInfo("Shutdown callback started", { roomId, activeSessions: sessions.size });
       await Promise.allSettled(
         [...sessions.values()].map(async (session) => {
-          await session.close();
+          await closeParticipantSession({
+            session,
+            sessionRegistry: sessions,
+            roomId,
+            reason: "worker_shutdown",
+          });
         }),
       );
-      transcriptWindows.clear();
       await prisma.$disconnect();
       logInfo("Shutdown callback completed", { roomId });
     });
@@ -601,6 +1085,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     new ServerOptions({
       agent: fileURLToPath(import.meta.url),
       agentName: configuredAgentName,
+      numIdleProcesses: parseNumberEnv(process.env.TRANSCRIBER_WORKER_IDLE_PROCESSES, 1),
     }),
   );
 }

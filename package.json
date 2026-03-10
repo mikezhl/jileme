@@ -13,6 +13,7 @@
   "dependencies": {
     "@livekit/agents": "^1.0.48",
     "@livekit/agents-plugin-deepgram": "^1.0.48",
+    "@livekit/rtc-node": "0.13.24",
     "@prisma/client": "^6.19.2",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.3.1",

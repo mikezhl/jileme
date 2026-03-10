@@ -73,7 +73,7 @@ export async function POST(_request: Request, context: RouteContext) {
         livekitApiSecret: credentials.livekitApiSecret,
       },
       {
-        waitForReady: false,
+        waitForReady: true,
         reason: `warmup:${room.roomId}`,
       },
     );
