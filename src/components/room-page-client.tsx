@@ -4,6 +4,11 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } fr
 import Link from "next/link";
 import { Room, RoomEvent, Track } from "livekit-client";
 
+import {
+  type RealtimeAnalysisContent,
+  type RealtimeAnalysisRoundScore,
+  type RealtimeAnalysisSide,
+} from "@/features/analysis/llm/realtime-analysis";
 import { ChatMessage } from "@/lib/chat-types";
 import { decodeLivekitChatMessageEvent, LIVEKIT_CHAT_MESSAGE_TOPIC } from "@/lib/livekit-chat-event";
 import { getRoomDisplayName, getRoomNameFromAnalysisContent } from "@/lib/room-name";
@@ -93,6 +98,7 @@ type RoomMetaResponse = {
 type RoomPageClientProps = {
   roomId: string;
   initialRoomName: string | null;
+  userId: string;
   username: string;
 };
 
@@ -121,8 +127,34 @@ type VoiceTrackParticipant = {
   getTrackPublication(source: Track.Source): { isMuted: boolean } | undefined;
 };
 
+type AnalysisPerspectiveLabels = {
+  ownSourceLabel: RealtimeAnalysisSide | null;
+  otherSourceLabel: RealtimeAnalysisSide | null;
+};
+
+type AnalysisMessageView = AnalysisPerspectiveLabels & {
+  content: RealtimeAnalysisContent;
+};
+
+type AnalysisViewState = {
+  messageViews: Map<string, AnalysisMessageView>;
+  scores: {
+    own: number;
+    other: number;
+  };
+  overallInsights: {
+    own: string;
+    other: string;
+  };
+  suggestions: {
+    own: string[];
+    other: string[];
+  };
+};
+
 const ROOM_CONNECTION_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const ROOM_META_POLL_INTERVAL_MS = 5 * 1000;
+const ANALYSIS_SIDE_ORDER: RealtimeAnalysisSide[] = ["A", "B"];
 
 function formatTime(value: string, language: UiLanguage) {
   const date = new Date(value);
@@ -146,9 +178,224 @@ function mergeMessages(existing: ChatMessage[], incoming: ChatMessage[]) {
   );
 }
 
-function isOwnMessage(message: ChatMessage, username: string) {
+function isConversationMessage(message: ChatMessage) {
+  return message.type === "text" || message.type === "transcript";
+}
+
+function resolveUserKeyFromParticipantId(participantId?: string | null) {
+  const normalized = participantId?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const match = /^user-(.+)$/.exec(normalized);
+  const userId = match?.[1]?.trim();
+  return userId ? `user:${userId}` : null;
+}
+
+function resolveConversationSpeakerKey(message: ChatMessage) {
+  if (!isConversationMessage(message)) {
+    return null;
+  }
+
+  const userKey = resolveUserKeyFromParticipantId(message.participantId);
+  if (userKey) {
+    return userKey;
+  }
+
+  const participantId = message.participantId?.trim();
+  if (participantId) {
+    return `participant:${participantId}`;
+  }
+
+  const senderName = message.senderName.trim().toLowerCase();
+  if (senderName) {
+    return `sender:${senderName}`;
+  }
+
+  return "sender:unknown";
+}
+
+function resolveConversationSpeakerLabel(index: number) {
+  if (index >= 0 && index < 26) {
+    return String.fromCharCode(65 + index);
+  }
+
+  return `P${index + 1}`;
+}
+
+function parseRealtimeAnalysisMessage(message: ChatMessage) {
+  if (message.type !== "analysis") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(message.content) as unknown;
+    if (!parsed || typeof parsed !== "object" || !("type" in parsed) || parsed.type !== "realtime-analysis") {
+      return null;
+    }
+
+    return parsed as RealtimeAnalysisContent;
+  } catch {
+    return null;
+  }
+}
+
+function deriveAnalysisPerspectiveLabels(
+  assignments: Map<string, string>,
+  currentUserId: string,
+): AnalysisPerspectiveLabels {
+  const assignedLabels = new Set(
+    [...assignments.values()].filter(
+      (label): label is RealtimeAnalysisSide => label === "A" || label === "B",
+    ),
+  );
+  const trackedLabels = ANALYSIS_SIDE_ORDER.filter((label) => assignedLabels.has(label));
+  const currentUserLabel = assignments.get(`user:${currentUserId}`);
+  const ownSourceLabel =
+    currentUserLabel === "A" || currentUserLabel === "B" ? currentUserLabel : null;
+
+  if (ownSourceLabel) {
+    return {
+      ownSourceLabel,
+      otherSourceLabel: trackedLabels.find((label) => label !== ownSourceLabel) ?? null,
+    };
+  }
+
+  if (trackedLabels.length === 1) {
+    return {
+      ownSourceLabel: null,
+      otherSourceLabel: trackedLabels[0],
+    };
+  }
+
+  if (trackedLabels.length >= 2) {
+    return {
+      ownSourceLabel: "A",
+      otherSourceLabel: "B",
+    };
+  }
+
+  return {
+    ownSourceLabel: null,
+    otherSourceLabel: null,
+  };
+}
+
+function getAnalysisInsight(
+  content: RealtimeAnalysisContent,
+  scope: keyof RealtimeAnalysisContent["insights"],
+  label: RealtimeAnalysisSide | null,
+) {
+  if (!label) {
+    return "";
+  }
+
+  return content.insights[scope][label] ?? "";
+}
+
+function getAnalysisSuggestions(
+  content: RealtimeAnalysisContent,
+  label: RealtimeAnalysisSide | null,
+) {
+  if (!label) {
+    return [];
+  }
+
+  return content.suggestions[label] ?? [];
+}
+
+function getAnalysisRoundScore(
+  content: RealtimeAnalysisContent,
+  label: RealtimeAnalysisSide | null,
+): RealtimeAnalysisRoundScore | null {
+  if (!label) {
+    return null;
+  }
+
+  return content.roundScores[label] ?? null;
+}
+
+function buildAnalysisViewState(messages: ChatMessage[], currentUserId: string): AnalysisViewState {
+  const assignments = new Map<string, string>();
+  const messageViews = new Map<string, AnalysisMessageView>();
+  let ownScore = 100;
+  let otherScore = 100;
+  let ownOverallInsight = "";
+  let otherOverallInsight = "";
+  let ownSuggestions: string[] = [];
+  let otherSuggestions: string[] = [];
+
+  for (const message of messages) {
+    const speakerKey = resolveConversationSpeakerKey(message);
+    if (speakerKey && !assignments.has(speakerKey)) {
+      assignments.set(speakerKey, resolveConversationSpeakerLabel(assignments.size));
+    }
+
+    const content = parseRealtimeAnalysisMessage(message);
+    if (!content) {
+      continue;
+    }
+
+    const perspectiveLabels = deriveAnalysisPerspectiveLabels(assignments, currentUserId);
+    messageViews.set(message.id, {
+      ...perspectiveLabels,
+      content,
+    });
+
+    const ownRoundScore = getAnalysisRoundScore(content, perspectiveLabels.ownSourceLabel);
+    const otherRoundScore = getAnalysisRoundScore(content, perspectiveLabels.otherSourceLabel);
+    if (ownRoundScore) {
+      ownScore += ownRoundScore.delta;
+    }
+    if (otherRoundScore) {
+      otherScore += otherRoundScore.delta;
+    }
+
+    const nextOwnOverallInsight = getAnalysisInsight(content, "overall", perspectiveLabels.ownSourceLabel);
+    const nextOtherOverallInsight = getAnalysisInsight(content, "overall", perspectiveLabels.otherSourceLabel);
+    if (nextOwnOverallInsight) {
+      ownOverallInsight = nextOwnOverallInsight;
+    }
+    if (nextOtherOverallInsight) {
+      otherOverallInsight = nextOtherOverallInsight;
+    }
+
+    const nextOwnSuggestions = getAnalysisSuggestions(content, perspectiveLabels.ownSourceLabel);
+    const nextOtherSuggestions = getAnalysisSuggestions(content, perspectiveLabels.otherSourceLabel);
+    if (nextOwnSuggestions.length > 0) {
+      ownSuggestions = nextOwnSuggestions;
+    }
+    if (nextOtherSuggestions.length > 0) {
+      otherSuggestions = nextOtherSuggestions;
+    }
+  }
+
+  return {
+    messageViews,
+    scores: {
+      own: ownScore,
+      other: otherScore,
+    },
+    overallInsights: {
+      own: ownOverallInsight,
+      other: otherOverallInsight,
+    },
+    suggestions: {
+      own: ownSuggestions,
+      other: otherSuggestions,
+    },
+  };
+}
+
+function isOwnMessage(message: ChatMessage, userId: string, username: string) {
   if (message.type === "analysis" || message.type === "summary") {
     return false;
+  }
+
+  const speakerKey = resolveConversationSpeakerKey(message);
+  if (speakerKey) {
+    return speakerKey === `user:${userId}`;
   }
 
   return message.senderName === username;
@@ -313,7 +560,7 @@ function findLatestRoomNameFromMessages(messages: ChatMessage[]): string | null 
   return null;
 }
 
-export default function RoomPageClient({ roomId, initialRoomName, username }: RoomPageClientProps) {
+export default function RoomPageClient({ roomId, initialRoomName, userId, username }: RoomPageClientProps) {
   const { language } = useUiLanguage();
   const isZh = language === "zh";
   const t = useCallback((zh: string, en: string) => (isZh ? zh : en), [isZh]);
@@ -393,10 +640,6 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
   const [transcriptionState, setTranscriptionState] = useState<TranscriptionState>("idle");
   const [hasAutoConnectAttempted, setHasAutoConnectAttempted] = useState(false);
   
-  // Real-time analysis scores and insights
-  const [scores, setScores] = useState({ A: 100, B: 100 });
-  const [overallInsights, setOverallInsights] = useState({ A: "", B: "" });
-  const [suggestions, setSuggestions] = useState({ A: [] as string[], B: [] as string[] });
   const [rawMessageId, setRawMessageId] = useState<string | null>(null);
   const [showEndRoomConfirm, setShowEndRoomConfirm] = useState(false);
 
@@ -418,36 +661,6 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
       const merged = mergeMessages(current, incoming);
       const latest = merged[merged.length - 1];
       latestMessageCreatedAtRef.current = latest ? latest.createdAt : null;
-      
-      // Calculate scores and insights from all messages to ensure consistency
-      let newScoreA = 100;
-      let newScoreB = 100;
-      let lastOverallA = "";
-      let lastOverallB = "";
-      let lastSuggestionsA: string[] = [];
-      let lastSuggestionsB: string[] = [];
-
-      for (const msg of merged) {
-        if (msg.type === "analysis") {
-          try {
-            const data = JSON.parse(msg.content);
-            if (data.type === "realtime-analysis") {
-              if (data.roundScores?.A?.delta) newScoreA += data.roundScores.A.delta;
-              if (data.roundScores?.B?.delta) newScoreB += data.roundScores.B.delta;
-              if (data.insights?.overall?.A) lastOverallA = data.insights.overall.A;
-              if (data.insights?.overall?.B) lastOverallB = data.insights.overall.B;
-              if (data.suggestions?.A) lastSuggestionsA = data.suggestions.A;
-              if (data.suggestions?.B) lastSuggestionsB = data.suggestions.B;
-            }
-          } catch {
-            // Ignore parse errors for scores
-          }
-        }
-      }
-      setScores({ A: newScoreA, B: newScoreB });
-      setOverallInsights({ A: lastOverallA, B: lastOverallB });
-      setSuggestions({ A: lastSuggestionsA, B: lastSuggestionsB });
-      
       return merged;
     });
   }, []);
@@ -1273,16 +1486,25 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
   const roomConnectionStatusClass = isInitialConnectionPending ? "connecting" : connectionState;
   const roomDisplayName = getRoomDisplayName(roomMeta.roomName, roomId);
   const currentSpeakerName = getRoomSpeakerDisplayName(username, speakerMode);
-  const nextSpeakerMode: RoomSpeakerMode = speakerMode === "self" ? "bot" : "self";
-  const nextSpeakerName = getRoomSpeakerDisplayName(username, nextSpeakerMode);
+  const analysisViewState = buildAnalysisViewState(messages, userId);
+  const scores = analysisViewState.scores;
+  const overallInsights = analysisViewState.overallInsights;
+  const suggestions = analysisViewState.suggestions;
 
   // Helper to render AI Analysis
   const AnalysisMessage = ({ message }: { message: ChatMessage }) => {
     try {
-      const data = JSON.parse(message.content);
-      if (data.type !== "realtime-analysis") throw new Error("Not realtime");
+      const analysisView = analysisViewState.messageViews.get(message.id);
+      const data = analysisView?.content ?? parseRealtimeAnalysisMessage(message);
+      if (!data) throw new Error("Not realtime");
 
       const isRaw = rawMessageId === message.id;
+      const ownSourceLabel = analysisView ? analysisView.ownSourceLabel : "A";
+      const otherSourceLabel = analysisView ? analysisView.otherSourceLabel : "B";
+      const otherRoundScore = getAnalysisRoundScore(data, otherSourceLabel);
+      const ownRoundScore = getAnalysisRoundScore(data, ownSourceLabel);
+      const otherCurrentRoundInsight = getAnalysisInsight(data, "currentRound", otherSourceLabel);
+      const ownCurrentRoundInsight = getAnalysisInsight(data, "currentRound", ownSourceLabel);
 
       return (
         <div className="bubble analysis">
@@ -1295,30 +1517,30 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
               <div className="analysis-side-section">
                 <div className="analysis-side-head">
                   <div className="analysis-side-h">{t("对方", "Other Side")}</div>
-                  {data.roundScores?.B && (
+                  {otherRoundScore && (
                     <span className="analysis-delta-tag">
-                      {data.roundScores.B.delta >= 0 ? '+' : ''}{data.roundScores.B.delta}
+                      {otherRoundScore.delta >= 0 ? '+' : ''}{otherRoundScore.delta}
                     </span>
                   )}
                 </div>
-                <p className="analysis-insight">{data.insights.currentRound.B || t("本轮无发言", "No activity this round")}</p>
-                {data.roundScores?.B?.reason && (
-                  <span className="analysis-score-reason">{data.roundScores.B.reason}</span>
+                <p className="analysis-insight">{otherCurrentRoundInsight || t("本轮无发言", "No activity this round")}</p>
+                {otherRoundScore?.reason && (
+                  <span className="analysis-score-reason">{otherRoundScore.reason}</span>
                 )}
               </div>
 
               <div className="analysis-side-section">
                 <div className="analysis-side-head">
                   <div className="analysis-side-h">{t("我方", "Our Side")}</div>
-                  {data.roundScores?.A && (
+                  {ownRoundScore && (
                     <span className="analysis-delta-tag">
-                      {data.roundScores.A.delta >= 0 ? '+' : ''}{data.roundScores.A.delta}
+                      {ownRoundScore.delta >= 0 ? '+' : ''}{ownRoundScore.delta}
                     </span>
                   )}
                 </div>
-                <p className="analysis-insight">{data.insights.currentRound.A || t("本轮无发言", "No activity this round")}</p>
-                {data.roundScores?.A?.reason && (
-                  <span className="analysis-score-reason">{data.roundScores.A.reason}</span>
+                <p className="analysis-insight">{ownCurrentRoundInsight || t("本轮无发言", "No activity this round")}</p>
+                {ownRoundScore?.reason && (
+                  <span className="analysis-score-reason">{ownRoundScore.reason}</span>
                 )}
               </div>
             </div>
@@ -1434,7 +1656,7 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
                 }
 
                 const announcement = message.type === "summary";
-                const own = announcement ? false : isOwnMessage(message, username);
+                const own = announcement ? false : isOwnMessage(message, userId, username);
                 return (
                   <div
                     key={message.id}
@@ -1508,11 +1730,11 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
           <div className="score-card">
             <div className="score-box">
               <span className="label">{t("我方", "Our Side")}</span>
-              <span className="value" style={{ color: scores.A >= scores.B ? 'var(--primary)' : 'inherit' }}>{scores.A}</span>
+              <span className="value" style={{ color: scores.own >= scores.other ? 'var(--primary)' : 'inherit' }}>{scores.own}</span>
             </div>
             <div className="score-box">
               <span className="label">{t("对方", "Other Side")}</span>
-              <span className="value" style={{ color: scores.B >= scores.A ? 'var(--primary)' : 'inherit' }}>{scores.B}</span>
+              <span className="value" style={{ color: scores.other >= scores.own ? 'var(--primary)' : 'inherit' }}>{scores.other}</span>
             </div>
           </div>
         </div>
@@ -1522,12 +1744,12 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
           <div className="overall-insight-box">
             <div className="overall-insight-item">
               <strong>{t("我方", "Our Side")}</strong>
-              <p className="analysis-insight" style={{ fontSize: '0.85rem' }}>{overallInsights.A || t("暂无洞察", "No insights yet")}</p>
+              <p className="analysis-insight" style={{ fontSize: '0.85rem' }}>{overallInsights.own || t("暂无洞察", "No insights yet")}</p>
             </div>
             <div style={{ height: '1px', background: 'var(--line)' }} />
             <div className="overall-insight-item">
               <strong>{t("对方", "Other Side")}</strong>
-              <p className="analysis-insight" style={{ fontSize: '0.85rem' }}>{overallInsights.B || t("暂无洞察", "No insights yet")}</p>
+              <p className="analysis-insight" style={{ fontSize: '0.85rem' }}>{overallInsights.other || t("暂无洞察", "No insights yet")}</p>
             </div>
           </div>
         </div>
@@ -1537,9 +1759,9 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
           <div className="overall-insight-box">
             <div className="overall-insight-item">
               <strong>{t("我方", "Our Side")}</strong>
-              {suggestions.A.length > 0 ? (
+              {suggestions.own.length > 0 ? (
                 <ul style={{ paddingLeft: '16px', margin: '4px 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
-                  {suggestions.A.map((s, i) => <li key={i}>{s}</li>)}
+                  {suggestions.own.map((s, i) => <li key={i}>{s}</li>)}
                 </ul>
               ) : (
                 <p className="analysis-insight" style={{ fontSize: '0.85rem' }}>{t("暂无建议", "No suggestions yet")}</p>
@@ -1548,9 +1770,9 @@ export default function RoomPageClient({ roomId, initialRoomName, username }: Ro
             <div style={{ height: '1px', background: 'var(--line)' }} />
             <div className="overall-insight-item">
               <strong>{t("对方", "Other Side")}</strong>
-              {suggestions.B.length > 0 ? (
+              {suggestions.other.length > 0 ? (
                 <ul style={{ paddingLeft: '16px', margin: '4px 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
-                  {suggestions.B.map((s, i) => <li key={i}>{s}</li>)}
+                  {suggestions.other.map((s, i) => <li key={i}>{s}</li>)}
                 </ul>
               ) : (
                 <p className="analysis-insight" style={{ fontSize: '0.85rem' }}>{t("暂无建议", "No suggestions yet")}</p>
