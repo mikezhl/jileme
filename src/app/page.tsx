@@ -1,6 +1,7 @@
 import DashboardPageClient from "@/components/dashboard-page-client";
 import { getCurrentUser } from "@/lib/auth";
 import { getUserTranscriptionSettingsStatus } from "@/features/transcription/core/user-settings";
+import { getUserProviderKeysMode } from "@/lib/env";
 import { getUserLlmKeyStatus } from "@/lib/llm-provider-keys";
 import { getUserLivekitCredentialStatus } from "@/lib/livekit-credentials";
 import { prisma } from "@/lib/prisma";
@@ -58,6 +59,8 @@ type HomePageProps = {
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
   const user = await getCurrentUser();
+  const userProviderKeysMode = getUserProviderKeysMode();
+  const allowUserProviderKeys = userProviderKeysMode !== "false";
   const initialAuthMode = user ? null : normalizeAuthMode(params?.auth);
   const initialNextPath = normalizeNextPath(params?.next);
 
@@ -71,6 +74,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         initialTranscriptionStatus={null}
         initialLlmKeyStatus={null}
         initialUsageSummary={null}
+        initialUserProviderKeysMode={userProviderKeysMode}
         initialAuthMode={initialAuthMode}
         initialNextPath={initialNextPath}
       />
@@ -120,9 +124,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         lastSeenAt: "desc",
       },
     }),
-      getUserLivekitCredentialStatus(user.id),
-      getUserTranscriptionSettingsStatus(user.id),
-      getUserLlmKeyStatus(user.id),
+      allowUserProviderKeys ? getUserLivekitCredentialStatus(user.id) : Promise.resolve(null),
+      allowUserProviderKeys ? getUserTranscriptionSettingsStatus(user.id) : Promise.resolve(null),
+      allowUserProviderKeys ? getUserLlmKeyStatus(user.id) : Promise.resolve(null),
       getUserUsageSummary(user.id),
     ]);
 
@@ -141,6 +145,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       initialTranscriptionStatus={transcriptionStatus}
       initialLlmKeyStatus={llmKeyStatus}
       initialUsageSummary={usageSummary}
+      initialUserProviderKeysMode={userProviderKeysMode}
       initialAuthMode={initialAuthMode}
       initialNextPath={initialNextPath}
     />

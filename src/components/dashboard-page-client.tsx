@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import type { UserProviderKeysMode } from "@/lib/env";
 import { getRoomDisplayName } from "@/lib/room-name";
 import { toDateLocale, type UiLanguage } from "@/lib/ui-language";
 import { useUiLanguage } from "@/lib/use-ui-language";
@@ -75,6 +76,7 @@ type DashboardPageClientProps = {
   initialTranscriptionStatus: TranscriptionSettingsStatus | null;
   initialLlmKeyStatus: LlmKeyStatus | null;
   initialUsageSummary: UsageSummary | null;
+  initialUserProviderKeysMode: UserProviderKeysMode;
   initialAuthMode: "login" | "register" | null;
   initialNextPath: string | null;
 };
@@ -189,6 +191,7 @@ export default function DashboardPageClient({
   initialTranscriptionStatus,
   initialLlmKeyStatus,
   initialUsageSummary,
+  initialUserProviderKeysMode,
   initialAuthMode,
   initialNextPath,
 }: DashboardPageClientProps) {
@@ -234,6 +237,7 @@ export default function DashboardPageClient({
   const [pendingRoomAction, setPendingRoomAction] = useState<"create" | "join" | null>(null);
 
   const isAuthenticated = Boolean(user);
+  const showUserProviderSettings = initialUserProviderKeysMode !== "false";
   const hasHistory = createdRooms.length > 0 || joinedRooms.length > 0;
   const authTitle = authMode === "register" ? t("注册", "Sign Up") : t("登录", "Sign In");
   const heroSubtitle = isAuthenticated
@@ -905,6 +909,8 @@ export default function DashboardPageClient({
               )}
             </details>
 
+            {showUserProviderSettings ? (
+              <>
             <details className="minimal-details">
               <summary>{t("配置 LiveKit 通话", "Configure LiveKit Transport")}</summary>
               {!isAuthenticated ? (
@@ -1205,6 +1211,8 @@ export default function DashboardPageClient({
                 </div>
               )}
             </details>
+              </>
+            ) : null}
           </section>
         </section>
       </main>
