@@ -113,16 +113,26 @@ a:focus-visible {
   flex-wrap: wrap;
 }
 
-.github-link {
-  width: 48px;
-  min-width: 48px;
-  padding: 0;
-  color: var(--muted);
-  transition: color 0.2s, background-color 0.1s;
+.github-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-right: 6px;
+  line-height: 0;
+  text-decoration: none;
 }
 
-.github-link:hover {
-  color: var(--foreground);
+.github-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.github-icon-link:hover {
+  opacity: 0.72;
 }
 
 .lang-toggle-btn {
