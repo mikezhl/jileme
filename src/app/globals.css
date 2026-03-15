@@ -1603,3 +1603,176 @@ a:focus-visible {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ===================== Microphone Selector ===================== */
+.mic-selector-trigger {
+  cursor: pointer !important;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.mic-selector-trigger:hover {
+  filter: brightness(0.95);
+}
+
+/* 麦克风图标：音量呼吸光晕 */
+.mic-vol-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  position: relative;
+  transition: color 0.2s;
+}
+
+.mic-vol-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--primary, #4f46e5);
+  opacity: calc(var(--mic-vol, 0) * 0.25);
+  transform: scale(calc(1 + var(--mic-vol, 0) * 0.45));
+  transition: opacity 0.08s, transform 0.08s;
+  pointer-events: none;
+}
+
+/* 下拉卡片 */
+.mic-dropdown {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  z-index: 99;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.12), 0 4px 12px -4px rgba(0, 0, 0, 0.06);
+  animation: mic-dropdown-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes mic-dropdown-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mic-dropdown::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 22px;
+  border: 7px solid transparent;
+  border-top-color: var(--line);
+}
+
+/* 音量进度条 */
+.mic-vol-bar-wrap {
+  position: relative;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.mic-vol-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #a5b4fc 0%, #818cf8 60%, #6366f1 100%);
+  transition: width 0.06s linear;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mic-vol-label {
+  position: relative;
+  z-index: 1;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* 设备列表 */
+.mic-device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mic-device-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mic-device-item:hover {
+  background: var(--surface);
+}
+
+.mic-device-active {
+  background: var(--surface);
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.mic-device-check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6366f1;
+}
+
+.mic-device-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mic-device-empty {
+  color: var(--muted);
+  font-style: italic;
+  cursor: default;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+}
+
+/* key-status-grid 布局增强 */
+.key-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

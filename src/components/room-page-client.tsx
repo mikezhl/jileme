@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Room, RoomEvent, Track } from "livekit-client";
 
@@ -694,6 +694,12 @@ export default function RoomPageClient({ roomId, initialRoomName, userId, userna
   const [copied, setCopied] = useState(false);
   const [activeStatusTooltip, setActiveStatusTooltip] = useState<"connection" | "transcription" | null>(null);
 
+  // 麦克风选择器
+  const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("");
+  const [micSelectorOpen, setMicSelectorOpen] = useState(false);
+  const [micVolume, setMicVolume] = useState(0);
+
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const voiceProviderRef = useRef(roomMeta.providers.voice);
   const micEnabledRef = useRef(false);
@@ -703,6 +709,13 @@ export default function RoomPageClient({ roomId, initialRoomName, userId, userna
   const voiceCallStartingRef = useRef(false);
   const transcriptionRuntimeReadyRef = useRef(false);
   const previousOwnerActiveRef = useRef(false);
+
+  // 麦克风音量监控
+  const micAudioContextRef = useRef<AudioContext | null>(null);
+  const micAnalyserRef = useRef<AnalyserNode | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micVolumeRafRef = useRef<number | null>(null);
+  const micMonitorStreamRef = useRef<MediaStream | null>(null);
 
   const upsertMessages = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) {
@@ -715,6 +728,112 @@ export default function RoomPageClient({ roomId, initialRoomName, userId, userna
       return merged;
     });
   }, []);
+
+  // ============== 麦克风选择器辅助函数 ==============
+
+  const stopVolumeMonitor = useCallback(() => {
+    if (micVolumeRafRef.current !== null) {
+      cancelAnimationFrame(micVolumeRafRef.current);
+      micVolumeRafRef.current = null;
+    }
+    micSourceRef.current?.disconnect();
+    micSourceRef.current = null;
+    micAnalyserRef.current = null;
+    if (micAudioContextRef.current) {
+      void micAudioContextRef.current.close().catch(() => undefined);
+      micAudioContextRef.current = null;
+    }
+    if (micMonitorStreamRef.current) {
+      micMonitorStreamRef.current.getTracks().forEach((t) => t.stop());
+      micMonitorStreamRef.current = null;
+    }
+    setMicVolume(0);
+  }, []);
+
+  const startVolumeMonitor = useCallback(async (deviceId: string) => {
+    stopVolumeMonitor();
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      micMonitorStreamRef.current = stream;
+      const ctx = new AudioContext();
+      micAudioContextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      micAnalyserRef.current = analyser;
+      const source = ctx.createMediaStreamSource(stream);
+      micSourceRef.current = source;
+      source.connect(analyser);
+
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        if (!micAnalyserRef.current) return;
+        micAnalyserRef.current.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        setMicVolume(Math.min(1, avg / 80));
+        micVolumeRafRef.current = requestAnimationFrame(tick);
+      };
+      micVolumeRafRef.current = requestAnimationFrame(tick);
+    } catch {
+      // 权限被拒或设备不可用，忽略
+    }
+  }, [stopVolumeMonitor]);
+
+  const loadMicDevices = useCallback(async () => {
+    try {
+      // 先请求权限，确保设备标签可读
+      await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop()));
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter((d) => d.kind === "audioinput");
+      setMicDevices(audioInputs);
+      setSelectedMicId((prev) => {
+        if (prev && audioInputs.some((d) => d.deviceId === prev)) return prev;
+        return audioInputs[0]?.deviceId ?? "";
+      });
+    } catch {
+      // 无权限或不支持
+    }
+  }, []);
+
+  const selectMic = useCallback((deviceId: string) => {
+    setSelectedMicId(deviceId);
+    void startVolumeMonitor(deviceId);
+  }, [startVolumeMonitor]);
+
+  const toggleMicSelector = useCallback(async () => {
+    setMicSelectorOpen((open) => {
+      if (!open) {
+        // 即将展开：加载设备列表
+        void loadMicDevices();
+      } else {
+        // 即将关闭：停止监控
+        stopVolumeMonitor();
+      }
+      return !open;
+    });
+  }, [loadMicDevices, stopVolumeMonitor]);
+
+  // 当开关麦克风时同步触发音量监控
+  useEffect(() => {
+    if (micEnabled && selectedMicId) {
+      void startVolumeMonitor(selectedMicId);
+    } else {
+      stopVolumeMonitor();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [micEnabled]);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      stopVolumeMonitor();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ============== 麦克风选择器辅助函数结束 ==============
 
   const releaseVoiceRuntimeIfIdle = useCallback(
     async (options?: { keepalive?: boolean }) => {
@@ -1669,6 +1788,100 @@ export default function RoomPageClient({ roomId, initialRoomName, userId, userna
               ))}
             </div>
           </div>
+
+          {/* 麦克风选择器 */}
+          {(() => {
+            const selectedDevice = micDevices.find((d) => d.deviceId === selectedMicId);
+            const selectedLabel = selectedDevice
+              ? (selectedDevice.label || (isZh ? `麦克风 ${micDevices.indexOf(selectedDevice) + 1}` : `Microphone ${micDevices.indexOf(selectedDevice) + 1}`))
+              : (isZh ? "默认麦克风" : "Default Mic");
+            return (
+              <div className="mic-selector-wrap" style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="room-status provider-chip provider-chip-panel mic-selector-trigger"
+                  onClick={() => void toggleMicSelector()}
+                  aria-expanded={micSelectorOpen}
+                  aria-label={isZh ? "选择麦克风" : "Select microphone"}
+                >
+                  <div className="provider-chip-main">
+                    <span className="provider-chip-label">{isZh ? "麦克风" : "Microphone"}</span>
+                    <strong className="provider-chip-value">{selectedLabel}</strong>
+                  </div>
+                  <span
+                    className="mic-vol-icon"
+                    style={{ "--mic-vol": micVolume } as CSSProperties}
+                    aria-hidden="true"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <line x1="12" y1="19" x2="12" y2="23" />
+                      <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                  </span>
+                </button>
+
+                {micSelectorOpen && (
+                  <>
+                    {/* 点击外部关闭 */}
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 98 }}
+                      onClick={() => { setMicSelectorOpen(false); stopVolumeMonitor(); }}
+                      aria-hidden="true"
+                    />
+                    <div className="mic-dropdown" role="listbox" aria-label={isZh ? "麦克风设备" : "Microphone devices"}>
+                      {/* 实时音量条 */}
+                      <div className="mic-vol-bar-wrap">
+                        <div
+                          className="mic-vol-bar-fill"
+                          style={{ width: `${Math.round(micVolume * 100)}%` }}
+                        />
+                        <span className="mic-vol-label">
+                          {isZh ? "实时音量" : "Level"}
+                          <strong style={{ marginLeft: 6, fontVariantNumeric: 'tabular-nums' }}>
+                            {Math.round(micVolume * 100)}%
+                          </strong>
+                        </span>
+                      </div>
+
+                      {/* 设备列表 */}
+                      <ul className="mic-device-list" role="group">
+                        {micDevices.length === 0 ? (
+                          <li className="mic-device-item mic-device-empty">
+                            {isZh ? "未找到麦克风设备" : "No microphone found"}
+                          </li>
+                        ) : (
+                          micDevices.map((device, idx) => {
+                            const label = device.label || (isZh ? `麦克风 ${idx + 1}` : `Microphone ${idx + 1}`);
+                            const isActive = device.deviceId === selectedMicId;
+                            return (
+                              <li key={device.deviceId} role="option" aria-selected={isActive}>
+                                <button
+                                  type="button"
+                                  className={`mic-device-item ${isActive ? "mic-device-active" : ""}`}
+                                  onClick={(e) => { e.stopPropagation(); selectMic(device.deviceId); }}
+                                >
+                                  <span className="mic-device-check" aria-hidden="true">
+                                    {isActive ? (
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12" />
+                                      </svg>
+                                    ) : null}
+                                  </span>
+                                  <span className="mic-device-label">{label}</span>
+                                </button>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="provider-tooltip">
             <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
