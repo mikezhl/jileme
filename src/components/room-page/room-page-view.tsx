@@ -488,42 +488,62 @@ type PopoverInlineMenuOption = {
 
 function PopoverInlineMenu({
   ariaLabel,
+  displayValue,
   disabled,
   isOpen,
   onChange,
   onOpenChange,
+  onOwnerOnlySettingAttempt,
+  ownerOnlyMessage,
+  ownerLocked = false,
   options,
   placeholder,
   value,
 }: {
   ariaLabel: string;
+  displayValue?: string;
   disabled: boolean;
   isOpen: boolean;
   onChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
+  onOwnerOnlySettingAttempt?: () => void;
+  ownerOnlyMessage?: string;
+  ownerLocked?: boolean;
   options: PopoverInlineMenuOption[];
   placeholder: string;
   value: string;
 }) {
   const selectedOption = options.find((option) => option.value === value);
+  const triggerLocked = ownerLocked && !disabled;
 
   return (
-    <span className={`provider-popover-control ${isOpen ? "active" : ""}`}>
+    <span className={`provider-popover-control ${isOpen ? "active" : ""} ${triggerLocked ? "locked" : ""}`}>
       <button
         type="button"
         className="provider-popover-trigger"
         aria-haspopup="listbox"
-        aria-expanded={isOpen}
+        aria-expanded={triggerLocked ? false : isOpen}
+        aria-disabled={disabled || triggerLocked}
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => onOpenChange(!isOpen)}
+        title={triggerLocked ? ownerOnlyMessage : undefined}
+        onClick={() => {
+          if (disabled) {
+            return;
+          }
+          if (triggerLocked) {
+            onOwnerOnlySettingAttempt?.();
+            return;
+          }
+          onOpenChange(!isOpen);
+        }}
       >
         <span className="provider-popover-trigger-value">
-          {selectedOption?.label ?? placeholder}
+          {displayValue ?? selectedOption?.label ?? placeholder}
         </span>
       </button>
 
-      {isOpen ? (
+      {isOpen && !triggerLocked ? (
         <div className="provider-popover-menu" role="listbox" aria-label={ariaLabel}>
           <div className="provider-popover-menu-list">
             {options.map((option) => {
@@ -560,7 +580,9 @@ function VoiceProviderPopover({
   language,
   onUpdateVoiceSource,
   onUpdateVoiceTranscriptionProvider,
+  onOwnerOnlySettingAttempt,
   roomMeta,
+  showOwnerOnlyHint,
   t,
   voiceSettingsPending,
 }: Pick<
@@ -571,13 +593,22 @@ function VoiceProviderPopover({
   | "roomMeta"
   | "t"
   | "voiceSettingsPending"
->) {
+> & {
+  onOwnerOnlySettingAttempt: () => void;
+  showOwnerOnlyHint: boolean;
+}) {
   const [openMenu, setOpenMenu] = useState<"source" | "transcription" | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const voice = roomMeta.providers.voice;
   const isOwner = roomMeta.isCreator;
+  const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
   const sourceValue = voice.selection.selectedSource ?? "";
   const transcriptionValue = voice.selection.selectedTranscriptionProvider ?? "";
+  const sourceDisplayValue = formatVoiceSourceValue(
+    voice.selection.selectedSource ?? voice.transport.source,
+    language,
+  );
+  const transcriptionDisplayValue = formatVoiceTranscriptionValue(voice, language);
   const availableSourceCount = voice.selection.sourceOptions.filter((option) => option.available).length;
   const availableTranscriptionCount = voice.selection.transcriptionOptions.filter(
     (option) => option.available,
@@ -602,6 +633,8 @@ function VoiceProviderPopover({
               option.value === voice.selection.selectedTranscriptionProvider && !option.available,
           ),
       ));
+  const showLockedSourceControl = !isOwner;
+  const showLockedTranscriptionControl = !isOwner;
   const controlsDisabled = voiceSettingsPending || roomMeta.status === "ENDED";
   const sourceOptions: PopoverInlineMenuOption[] = voice.selection.sourceOptions.map((option) => ({
     value: option.value,
@@ -648,6 +681,7 @@ function VoiceProviderPopover({
 
   return (
     <div className="provider-tooltip">
+      {showOwnerOnlyHint ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
       <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
         <div className="provider-chip-main">
           <span className="provider-chip-label">{t("语音与转录", "Voice & Transcription")}</span>
@@ -666,11 +700,15 @@ function VoiceProviderPopover({
           <span className="provider-popover-label">
             {t("语音与转录来源", "Voice & transcription source")}
           </span>
-          {canSelectSource ? (
+          {canSelectSource || showLockedSourceControl ? (
             <PopoverInlineMenu
               ariaLabel={t("选择语音与转录来源", "Select voice and transcription source")}
+              displayValue={sourceDisplayValue}
               disabled={controlsDisabled}
               isOpen={openMenu === "source"}
+              onOwnerOnlySettingAttempt={onOwnerOnlySettingAttempt}
+              ownerOnlyMessage={ownerOnlyMessage}
+              ownerLocked={!isOwner}
               options={sourceOptions}
               placeholder={t("未设置", "Not set")}
               value={sourceValue}
@@ -684,12 +722,7 @@ function VoiceProviderPopover({
               onOpenChange={(nextOpen) => setOpenMenu(nextOpen ? "source" : null)}
             />
           ) : (
-            <strong className="provider-popover-value">
-              {formatVoiceSourceValue(
-                voice.selection.selectedSource ?? voice.transport.source,
-                language,
-              )}
-            </strong>
+            <strong className="provider-popover-value">{sourceDisplayValue}</strong>
           )}
         </div>
 
@@ -702,11 +735,15 @@ function VoiceProviderPopover({
 
         <div className="provider-popover-row provider-popover-row-control">
           <span className="provider-popover-label">{t("转录通道", "Transcription channel")}</span>
-          {canSelectTranscription ? (
+          {canSelectTranscription || showLockedTranscriptionControl ? (
             <PopoverInlineMenu
               ariaLabel={t("选择转录通道", "Select transcription channel")}
-              disabled={controlsDisabled || !voice.selection.selectedSource}
+              displayValue={transcriptionDisplayValue}
+              disabled={controlsDisabled || (isOwner && !voice.selection.selectedSource)}
               isOpen={openMenu === "transcription"}
+              onOwnerOnlySettingAttempt={onOwnerOnlySettingAttempt}
+              ownerOnlyMessage={ownerOnlyMessage}
+              ownerLocked={!isOwner}
               options={transcriptionOptions}
               placeholder={t("未设置", "Not set")}
               value={transcriptionValue}
@@ -720,9 +757,7 @@ function VoiceProviderPopover({
               onOpenChange={(nextOpen) => setOpenMenu(nextOpen ? "transcription" : null)}
             />
           ) : (
-            <strong className="provider-popover-value">
-              {formatVoiceTranscriptionValue(voice, language)}
-            </strong>
+            <strong className="provider-popover-value">{transcriptionDisplayValue}</strong>
           )}
         </div>
 
@@ -735,7 +770,9 @@ function VoiceProviderPopover({
                   "Changes apply immediately; if you are in a live call, the current voice runtime will be restarted safely.",
                 )}
           </p>
-        ) : null}
+        ) : (
+          <p className="provider-popover-hint">{ownerOnlyMessage}</p>
+        )}
 
         {!voice.ready && voice.error ? (
           <div className="provider-popover-row">
@@ -795,6 +832,11 @@ function RoomSidebarPanel({
   | "voiceSettingsPending"
 >) {
   const selectedDevice = micDevices.find((device) => device.deviceId === selectedMicId);
+  const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
+  const ownerOnlyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [ownerOnlyHintTarget, setOwnerOnlyHintTarget] = useState<"public" | "voice" | "analysis" | null>(null);
+  const publicRoomOwnerLocked = !roomMeta.isCreator;
+  const analysisOwnerLocked = !roomMeta.isCreator;
   const selectedLabel = selectedDevice
     ? selectedDevice.label ||
       (isZh
@@ -803,6 +845,25 @@ function RoomSidebarPanel({
     : isZh
       ? "默认麦克风"
       : "Default microphone";
+
+  useEffect(() => {
+    return () => {
+      if (ownerOnlyNoticeTimerRef.current !== null) {
+        clearTimeout(ownerOnlyNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const notifyOwnerOnlySettingFor = (target: "public" | "voice" | "analysis") => {
+    setOwnerOnlyHintTarget(target);
+    if (ownerOnlyNoticeTimerRef.current !== null) {
+      clearTimeout(ownerOnlyNoticeTimerRef.current);
+    }
+    ownerOnlyNoticeTimerRef.current = setTimeout(() => {
+      setOwnerOnlyHintTarget(null);
+      ownerOnlyNoticeTimerRef.current = null;
+    }, 2400);
+  };
 
   return (
     <>
@@ -902,39 +963,50 @@ function RoomSidebarPanel({
           className="key-status-grid"
           style={{ fontSize: "0.75rem", gap: "8px", background: "transparent", padding: 0 }}
         >
-          <div className="room-status provider-chip provider-chip-panel visibility-chip-panel">
-            <div className="provider-chip-main">
-              <span className="provider-chip-label">{t("公开房间", "Public Room")}</span>
-              <strong className="provider-chip-value">
-                {roomMeta.isPublic ? t("所有人可见", "Visible to everyone") : t("仅成员可见", "Members only")}
-              </strong>
+          <div className="owner-only-tip-anchor">
+            {ownerOnlyHintTarget === "public" ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
+            <div className="room-status provider-chip provider-chip-panel visibility-chip-panel">
+              <div className="provider-chip-main">
+                <span className="provider-chip-label">{t("公开房间", "Public Room")}</span>
+                <strong className="provider-chip-value">
+                  {roomMeta.isPublic ? t("所有人可见", "Visible to everyone") : t("仅成员可见", "Members only")}
+                </strong>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={roomMeta.isPublic}
+                aria-disabled={publicRoomOwnerLocked || publicTogglePending}
+                aria-label={t("切换公开房间", "Toggle public room")}
+                className={`provider-chip-switch ${roomMeta.isPublic ? "active" : ""}`}
+                title={publicRoomOwnerLocked ? ownerOnlyMessage : undefined}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (publicRoomOwnerLocked) {
+                    notifyOwnerOnlySettingFor("public");
+                    return;
+                  }
+                  onTogglePublicRoom();
+                }}
+                disabled={publicTogglePending}
+              >
+                <span className="provider-chip-switch-track">
+                  <span className="provider-chip-switch-thumb" />
+                </span>
+                <span className="provider-chip-switch-text">
+                  {publicTogglePending ? "..." : roomMeta.isPublic ? t("开", "On") : t("关", "Off")}
+                </span>
+              </button>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={roomMeta.isPublic}
-              aria-label={t("切换公开房间", "Toggle public room")}
-              className={`provider-chip-switch ${roomMeta.isPublic ? "active" : ""}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onTogglePublicRoom();
-              }}
-              disabled={!roomMeta.isCreator || publicTogglePending}
-            >
-              <span className="provider-chip-switch-track">
-                <span className="provider-chip-switch-thumb" />
-              </span>
-              <span className="provider-chip-switch-text">
-                {publicTogglePending ? "..." : roomMeta.isPublic ? t("开", "On") : t("关", "Off")}
-              </span>
-            </button>
           </div>
 
           <VoiceProviderPopover
             language={language}
             onUpdateVoiceSource={onUpdateVoiceSource}
             onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
+            onOwnerOnlySettingAttempt={() => notifyOwnerOnlySettingFor("voice")}
             roomMeta={roomMeta}
+            showOwnerOnlyHint={ownerOnlyHintTarget === "voice"}
             t={t}
             voiceSettingsPending={voiceSettingsPending}
           />
@@ -1042,6 +1114,7 @@ function RoomSidebarPanel({
           </div>
 
           <div className="provider-tooltip">
+            {ownerOnlyHintTarget === "analysis" ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
             <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
               <div className="provider-chip-main">
                 <span className="provider-chip-label">{t("大模型分析", "LLM Analysis")}</span>
@@ -1053,13 +1126,19 @@ function RoomSidebarPanel({
                 type="button"
                 role="switch"
                 aria-checked={roomMeta.analysisEnabled}
+                aria-disabled={analysisOwnerLocked || analysisTogglePending || roomMeta.status === "ENDED"}
                 aria-label={t("切换实时大模型分析", "Toggle realtime LLM analysis")}
                 className={`provider-chip-switch ${roomMeta.analysisEnabled ? "active" : ""}`}
+                title={analysisOwnerLocked ? ownerOnlyMessage : undefined}
                 onClick={(event) => {
                   event.stopPropagation();
+                  if (analysisOwnerLocked) {
+                    notifyOwnerOnlySettingFor("analysis");
+                    return;
+                  }
                   onToggleRealtimeAnalysis();
                 }}
-                disabled={!roomMeta.isCreator || analysisTogglePending || roomMeta.status === "ENDED"}
+                disabled={analysisTogglePending || roomMeta.status === "ENDED"}
               >
                 <span className="provider-chip-switch-track">
                   <span className="provider-chip-switch-thumb" />
@@ -1081,6 +1160,7 @@ function RoomSidebarPanel({
                   <strong className="provider-popover-value">{item.value}</strong>
                 </div>
               ))}
+              {analysisOwnerLocked ? <p className="provider-popover-hint">{ownerOnlyMessage}</p> : null}
             </div>
           </div>
         </div>

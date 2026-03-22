@@ -1516,7 +1516,8 @@ a:focus-visible {
   cursor: pointer;
 }
 
-.provider-chip-switch:disabled {
+.provider-chip-switch:disabled,
+.provider-chip-switch[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -1956,6 +1957,10 @@ a:focus-visible {
   transform: translateY(-28%) rotate(-135deg);
 }
 
+.provider-popover-control.locked::after {
+  opacity: 0.6;
+}
+
 .provider-popover-control:hover {
   border-color: color-mix(in srgb, var(--foreground) 16%, var(--line));
   background:
@@ -1998,7 +2003,8 @@ a:focus-visible {
   outline: none;
 }
 
-.provider-popover-trigger:disabled {
+.provider-popover-trigger:disabled,
+.provider-popover-trigger[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -2089,6 +2095,36 @@ a:focus-visible {
   font-size: 0.76rem;
   line-height: 1.45;
   color: var(--muted);
+}
+
+.owner-only-tip-anchor {
+  position: relative;
+  width: 100%;
+}
+
+.owner-only-tip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  max-width: min(240px, 100%);
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  box-shadow: 0 10px 24px -14px rgba(15, 23, 42, 0.45);
+  pointer-events: none;
+  z-index: 110;
+}
+
+.owner-only-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 18px;
+  border: 6px solid transparent;
+  border-top-color: var(--foreground);
 }
 
 /* Sidebar Components */
