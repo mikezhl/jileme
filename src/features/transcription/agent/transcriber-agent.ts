@@ -689,6 +689,7 @@ async function resolveRoomVoiceRuntime(roomId: string): Promise<RoomVoiceRuntime
       createdById: true,
       voiceSourcePreference: true,
       transcriptionProviderPreference: true,
+      transcriptionLanguagePreference: true,
     },
   });
 

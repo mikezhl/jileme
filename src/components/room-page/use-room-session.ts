@@ -7,6 +7,7 @@ import {
   LIVEKIT_TRANSCRIPTION_STATUS_TOPIC,
 } from "@/lib/livekit-transcription-status-event";
 import { type ChatMessage } from "@/lib/chat-types";
+import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
@@ -875,6 +876,7 @@ export function useRoomSession({
     async (updates: {
       source?: RoomVoiceSourcePreference;
       transcriptionProvider?: TranscriptionProviderName;
+      transcriptionLanguage?: RoomTranscriptionLanguagePreference;
     }) => {
       if (!roomMeta.isCreator || voiceSettingsPending || roomMeta.status === "ENDED") {
         return;
@@ -903,6 +905,8 @@ export function useRoomSession({
         const runtimeChanged =
           nextVoiceProvider.selection.selectedTranscriptionProvider !==
             roomMeta.providers.voice.selection.selectedTranscriptionProvider ||
+          nextVoiceProvider.selection.selectedTranscriptionLanguage !==
+            roomMeta.providers.voice.selection.selectedTranscriptionLanguage ||
           nextVoiceProvider.transcriberEnabled !== roomMeta.providers.voice.transcriberEnabled ||
           nextVoiceProvider.transport.source !== roomMeta.providers.voice.transport.source;
         const sourceChanged =

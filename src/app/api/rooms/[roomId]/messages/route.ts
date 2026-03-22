@@ -42,6 +42,7 @@ async function relayMessageToRoom(
     createdById: string | null;
     voiceSourcePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["voiceSourcePreference"];
     transcriptionProviderPreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionProviderPreference"];
+    transcriptionLanguagePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionLanguagePreference"];
   },
   message: ChatMessage,
 ) {

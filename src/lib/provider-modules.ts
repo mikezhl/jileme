@@ -2,6 +2,7 @@ import { getConversationAnalysisPromptProfiles } from "@/features/analysis/llm/c
 import type { RoomVoiceRuntime } from "@/features/transcription/core/runtime";
 import type { ResolvedConversationLlmRuntime, RuntimeSource } from "./llm-provider-keys";
 import type { KeySource } from "./provider-sources";
+import type { RoomTranscriptionLanguagePreference } from "./room-transcription-language";
 import type { RoomVoiceSourcePreference } from "./room-voice-preferences";
 import type { TranscriptionProviderName } from "@/features/transcription/core/providers";
 
@@ -20,11 +21,13 @@ export type VoiceProviderModule = {
   selection: {
     sourcePreference: RoomVoiceSourcePreference | null;
     transcriptionProviderPreference: TranscriptionProviderName | null;
+    transcriptionLanguagePreference: RoomTranscriptionLanguagePreference | null;
     selectedSource: RoomVoiceSourcePreference | null;
     sourceOptions: Array<{
       value: RoomVoiceSourcePreference;
       available: boolean;
     }>;
+    selectedTranscriptionLanguage: RoomTranscriptionLanguagePreference;
     selectedTranscriptionProvider: TranscriptionProviderName | null;
     transcriptionOptions: Array<{
       value: TranscriptionProviderName;

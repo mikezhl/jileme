@@ -3,6 +3,8 @@
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { type UiLanguage } from "@/lib/ui-language";
+
 import {
   emptyProviderForm,
   isBlank,
@@ -26,6 +28,7 @@ import {
 } from "./dashboard-page-support";
 
 type UseDashboardStateArgs = DashboardPageClientProps & {
+  language: UiLanguage;
   t: DashboardTranslate;
 };
 
@@ -43,6 +46,7 @@ export function useDashboardState({
   initialUsageSummary,
   initialAuthMode,
   initialNextPath,
+  language,
   t,
 }: UseDashboardStateArgs) {
   const router = useRouter();
@@ -210,7 +214,9 @@ export function useDashboardState({
     try {
       const payload = await postProtected<{ roomId?: string }>(
         "/api/rooms/bootstrap",
-        action === "create" ? { action } : { action, roomId: roomIdToJoin.trim() },
+        action === "create"
+          ? { action, uiLanguage: language }
+          : { action, roomId: roomIdToJoin.trim() },
         t("房间操作失败", "Room action failed"),
       );
       if (!payload.roomId) {

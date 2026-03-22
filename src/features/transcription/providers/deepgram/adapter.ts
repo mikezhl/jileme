@@ -27,7 +27,7 @@ class DeepgramRealtimeSession implements RealtimeTranscriptionProviderSession {
     const options: deepgram.STTOptions = {
       apiKey: runtime.apiKey!,
       model: runtime.model as deepgram.STTOptions["model"],
-      language: runtime.language,
+      language: runtime.language ?? undefined,
       interimResults: runtime.interimResults,
       punctuate: runtime.punctuate,
       smartFormat: runtime.smartFormat,

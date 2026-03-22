@@ -8,6 +8,7 @@ import {
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
 import { type ChatMessage } from "@/lib/chat-types";
 import { getRoomNameFromAnalysisContent } from "@/lib/room-name";
+import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { toDateLocale, type UiLanguage } from "@/lib/ui-language";
 
@@ -24,11 +25,13 @@ export type VoiceProviderState = {
   selection: {
     sourcePreference: RoomVoiceSourcePreference | null;
     transcriptionProviderPreference: TranscriptionProviderName | null;
+    transcriptionLanguagePreference: RoomTranscriptionLanguagePreference | null;
     selectedSource: RoomVoiceSourcePreference | null;
     sourceOptions: Array<{
       value: RoomVoiceSourcePreference;
       available: boolean;
     }>;
+    selectedTranscriptionLanguage: RoomTranscriptionLanguagePreference;
     selectedTranscriptionProvider: TranscriptionProviderName | null;
     transcriptionOptions: Array<{
       value: TranscriptionProviderName;
@@ -227,6 +230,7 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
         selection: {
           sourcePreference: null,
           transcriptionProviderPreference: null,
+          transcriptionLanguagePreference: null,
           selectedSource: "system",
           sourceOptions: [
             {
@@ -234,6 +238,7 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
               available: true,
             },
           ],
+          selectedTranscriptionLanguage: "zh",
           selectedTranscriptionProvider: "deepgram",
           transcriptionOptions: [
             {

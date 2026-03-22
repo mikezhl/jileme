@@ -10,7 +10,7 @@ export default function DashboardPageClient(props: DashboardPageClientProps) {
   const { language, setLanguage } = useUiLanguage();
   const isZh = language === "zh";
   const t = (zh: string, en: string) => (isZh ? zh : en);
-  const state = useDashboardState({ ...props, t });
+  const state = useDashboardState({ ...props, language, t });
   const showUserProviderSettings = props.initialUserProviderKeysMode !== "false";
   const heroSubtitle = state.isAuthenticated
     ? t(

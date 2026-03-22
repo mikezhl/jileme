@@ -11,8 +11,10 @@ import { buildRoomVoiceProviderModule } from "@/lib/provider-modules";
 import { prisma } from "@/lib/prisma";
 import {
   getRoomVoiceRuntimePreferences,
+  normalizeRoomTranscriptionLanguageSetting,
   normalizeRoomTranscriptionProviderPreference,
   parseRoomVoiceSourcePreference,
+  toPrismaRoomTranscriptionLanguagePreference,
   toPrismaRoomTranscriptionProvider,
   toPrismaRoomVoiceSource,
 } from "@/lib/room-voice-preferences";
@@ -27,6 +29,7 @@ type RouteContext = {
 type UpdateRoomVoiceSettingsRequest = {
   source?: string;
   transcriptionProvider?: string;
+  transcriptionLanguage?: string;
 };
 
 export const runtime = "nodejs";
@@ -50,9 +53,13 @@ export async function POST(request: Request, context: RouteContext) {
       body ?? {},
       "transcriptionProvider",
     );
-    if (!requestedSourceProvided && !requestedProviderProvided) {
+    const requestedLanguageProvided = Object.prototype.hasOwnProperty.call(
+      body ?? {},
+      "transcriptionLanguage",
+    );
+    if (!requestedSourceProvided && !requestedProviderProvided && !requestedLanguageProvided) {
       return NextResponse.json(
-        { error: "source or transcriptionProvider must be provided" },
+        { error: "source, transcriptionProvider, or transcriptionLanguage must be provided" },
         { status: 400 },
       );
     }
@@ -66,6 +73,7 @@ export async function POST(request: Request, context: RouteContext) {
         createdById: true,
         voiceSourcePreference: true,
         transcriptionProviderPreference: true,
+        transcriptionLanguagePreference: true,
         createdBy: {
           select: {
             username: true,
@@ -100,16 +108,19 @@ export async function POST(request: Request, context: RouteContext) {
 
     let nextSourcePreference = requestedSource ?? null;
     let nextTranscriptionProviderPreference = currentPreferences.transcriptionProviderPreference;
+    let nextTranscriptionLanguagePreference = currentPreferences.transcriptionLanguagePreference;
 
     let nextRuntime = await resolveRoomVoiceRuntimeForOwner(room.createdById, {
       sourcePreference: nextSourcePreference,
       transcriptionProviderPreference: nextTranscriptionProviderPreference,
+      transcriptionLanguagePreference: nextTranscriptionLanguagePreference,
     });
 
     if (requestedSource) {
       nextRuntime = await resolveRoomVoiceRuntimeForOwner(room.createdById, {
         sourcePreference: requestedSource,
         transcriptionProviderPreference: currentPreferences.transcriptionProviderPreference,
+        transcriptionLanguagePreference: nextTranscriptionLanguagePreference,
       });
       const sourceOption = nextRuntime.selection.sourceOptions.find(
         (item) => item.value === requestedSource,
@@ -180,6 +191,19 @@ export async function POST(request: Request, context: RouteContext) {
       nextTranscriptionProviderPreference = requestedProvider;
     }
 
+    if (requestedLanguageProvided) {
+      const requestedLanguage = normalizeRoomTranscriptionLanguageSetting(
+        body.transcriptionLanguage,
+      );
+      if (!requestedLanguage) {
+        return NextResponse.json(
+          { error: "transcriptionLanguage must be zh, en, or auto" },
+          { status: 400 },
+        );
+      }
+      nextTranscriptionLanguagePreference = requestedLanguage;
+    }
+
     const updated = await prisma.room.update({
       where: { id: room.id },
       data: {
@@ -189,11 +213,15 @@ export async function POST(request: Request, context: RouteContext) {
         transcriptionProviderPreference: toPrismaRoomTranscriptionProvider(
           nextTranscriptionProviderPreference,
         ),
+        transcriptionLanguagePreference: toPrismaRoomTranscriptionLanguagePreference(
+          nextTranscriptionLanguagePreference,
+        ),
       },
       select: {
         createdById: true,
         voiceSourcePreference: true,
         transcriptionProviderPreference: true,
+        transcriptionLanguagePreference: true,
       },
     });
 

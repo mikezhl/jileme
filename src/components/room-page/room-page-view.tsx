@@ -12,6 +12,7 @@ import {
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
+import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
 import { type ChatMessage } from "@/lib/chat-types";
@@ -83,6 +84,7 @@ type RoomPageViewProps = {
   onTogglePublicRoom: () => void;
   onToggleRawMessage: (nextId: string | null) => void;
   onToggleRealtimeAnalysis: () => void;
+  onUpdateRoomTranscriptionLanguage: (language: RoomTranscriptionLanguagePreference) => void;
   onUpdateVoiceSource: (source: RoomVoiceSourcePreference) => void;
   onUpdateVoiceTranscriptionProvider: (provider: TranscriptionProviderName) => void;
   onTranscriptionStatusClick: () => void;
@@ -576,6 +578,157 @@ function PopoverInlineMenu({
   );
 }
 
+function getRoomTranscriptionLanguageLabel(
+  value: RoomTranscriptionLanguagePreference,
+  t: RoomPageTranslate,
+) {
+  if (value === "en") {
+    return t("英文", "English");
+  }
+  if (value === "auto") {
+    return t("自动", "Auto");
+  }
+  return t("中文", "Chinese");
+}
+
+function RoomTranscriptionLanguageControl({
+  onOwnerOnlySettingAttempt,
+  onUpdateRoomTranscriptionLanguage,
+  roomMeta,
+  showOwnerOnlyHint,
+  t,
+  voiceSettingsPending,
+}: Pick<
+  RoomPageViewProps,
+  | "onUpdateRoomTranscriptionLanguage"
+  | "roomMeta"
+  | "t"
+  | "voiceSettingsPending"
+> & {
+  onOwnerOnlySettingAttempt: () => void;
+  showOwnerOnlyHint: boolean;
+}) {
+  const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
+  const isOwner = roomMeta.isCreator;
+  const selectedLanguage = roomMeta.providers.voice.selection.selectedTranscriptionLanguage;
+  const controlsDisabled = voiceSettingsPending || roomMeta.status === "ENDED";
+  const options = ([
+    "zh",
+    "en",
+    "auto",
+  ] as const).map((value) => ({
+    value,
+    label: getRoomTranscriptionLanguageLabel(value, t),
+  }));
+  const selectedIndex = options.findIndex((option) => option.value === selectedLanguage);
+  const sliderIndex = selectedIndex >= 0 ? selectedIndex : 0;
+  const sliderStyle: CSSProperties = {
+    position: "relative",
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    alignItems: "center",
+    width: "100%",
+    minWidth: "100%",
+    minHeight: "32px",
+    marginTop: "1px",
+    padding: "2px",
+    border: "1px solid var(--line)",
+    borderRadius: "12px",
+    background: "var(--surface)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.75)",
+    overflow: "hidden",
+  };
+  const sliderThumbStyle: CSSProperties = {
+    position: "absolute",
+    top: "2px",
+    left: "2px",
+    width: "calc((100% - 4px) / 3)",
+    height: "calc(100% - 4px)",
+    borderRadius: "10px",
+    background: "var(--foreground)",
+    boxShadow: "0 8px 18px -14px rgba(15,23,42,0.4), 0 2px 6px rgba(15,23,42,0.16)",
+    transform: `translateX(${sliderIndex * 100}%)`,
+    transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)",
+  };
+  const sliderLabelStyle: CSSProperties = {
+    display: "block",
+    width: "100%",
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    lineHeight: 1,
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  return (
+    <div className="owner-only-tip-anchor">
+      {showOwnerOnlyHint ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
+      <div className="room-status provider-chip provider-chip-panel visibility-chip-panel">
+        <div className="provider-chip-main" style={{ width: "100%" }}>
+          <span className="provider-chip-label">{t("转录语言", "Transcription Language")}</span>
+          <div
+            className={`room-transcription-language-slider ${!isOwner ? "locked" : ""}`}
+            role="radiogroup"
+            aria-label={t("选择转录语言", "Select transcription language")}
+            aria-disabled={controlsDisabled || !isOwner}
+            title={!isOwner ? ownerOnlyMessage : undefined}
+            style={sliderStyle}
+          >
+            <span className="room-transcription-language-slider-thumb" aria-hidden="true" style={sliderThumbStyle} />
+            {options.map((option) => {
+              const isActive = option.value === selectedLanguage;
+              const optionStyle: CSSProperties = {
+                position: "relative",
+                zIndex: 1,
+                minWidth: 0,
+                minHeight: "28px",
+                padding: "0 6px",
+                border: "none",
+                borderRadius: "10px",
+                background: "transparent",
+                color: isActive ? "var(--background)" : "var(--foreground)",
+                opacity: controlsDisabled ? 0.55 : 1,
+                cursor: controlsDisabled || !isOwner ? "not-allowed" : "pointer",
+              };
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  aria-label={option.label}
+                  className={`room-transcription-language-slider-option ${isActive ? "active" : ""}`}
+                  disabled={controlsDisabled}
+                  style={optionStyle}
+                  onClick={() => {
+                    if (controlsDisabled) {
+                      return;
+                    }
+                    if (!isOwner) {
+                      onOwnerOnlySettingAttempt();
+                      return;
+                    }
+                    if (option.value === selectedLanguage) {
+                      return;
+                    }
+                    onUpdateRoomTranscriptionLanguage(option.value);
+                  }}
+                >
+                  <span className="room-transcription-language-slider-label" style={sliderLabelStyle}>
+                    {option.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VoiceProviderPopover({
   language,
   onUpdateVoiceSource,
@@ -797,6 +950,7 @@ function RoomSidebarPanel({
   onToggleMicSelector,
   onTogglePublicRoom,
   onToggleRealtimeAnalysis,
+  onUpdateRoomTranscriptionLanguage,
   onUpdateVoiceSource,
   onUpdateVoiceTranscriptionProvider,
   overallInsights,
@@ -820,6 +974,7 @@ function RoomSidebarPanel({
   | "onToggleMicSelector"
   | "onTogglePublicRoom"
   | "onToggleRealtimeAnalysis"
+  | "onUpdateRoomTranscriptionLanguage"
   | "onUpdateVoiceSource"
   | "onUpdateVoiceTranscriptionProvider"
   | "overallInsights"
@@ -834,7 +989,9 @@ function RoomSidebarPanel({
   const selectedDevice = micDevices.find((device) => device.deviceId === selectedMicId);
   const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
   const ownerOnlyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [ownerOnlyHintTarget, setOwnerOnlyHintTarget] = useState<"public" | "voice" | "analysis" | null>(null);
+  const [ownerOnlyHintTarget, setOwnerOnlyHintTarget] = useState<
+    "public" | "transcriptionLanguage" | "voice" | "analysis" | null
+  >(null);
   const publicRoomOwnerLocked = !roomMeta.isCreator;
   const analysisOwnerLocked = !roomMeta.isCreator;
   const selectedLabel = selectedDevice
@@ -854,7 +1011,9 @@ function RoomSidebarPanel({
     };
   }, []);
 
-  const notifyOwnerOnlySettingFor = (target: "public" | "voice" | "analysis") => {
+  const notifyOwnerOnlySettingFor = (
+    target: "public" | "transcriptionLanguage" | "voice" | "analysis",
+  ) => {
     setOwnerOnlyHintTarget(target);
     if (ownerOnlyNoticeTimerRef.current !== null) {
       clearTimeout(ownerOnlyNoticeTimerRef.current);
@@ -999,6 +1158,15 @@ function RoomSidebarPanel({
               </button>
             </div>
           </div>
+
+          <RoomTranscriptionLanguageControl
+            onOwnerOnlySettingAttempt={() => notifyOwnerOnlySettingFor("transcriptionLanguage")}
+            onUpdateRoomTranscriptionLanguage={onUpdateRoomTranscriptionLanguage}
+            roomMeta={roomMeta}
+            showOwnerOnlyHint={ownerOnlyHintTarget === "transcriptionLanguage"}
+            t={t}
+            voiceSettingsPending={voiceSettingsPending}
+          />
 
           <VoiceProviderPopover
             language={language}
@@ -1215,6 +1383,7 @@ export function RoomPageView({
   onTogglePublicRoom,
   onToggleRawMessage,
   onToggleRealtimeAnalysis,
+  onUpdateRoomTranscriptionLanguage,
   onUpdateVoiceSource,
   onUpdateVoiceTranscriptionProvider,
   onTranscriptionStatusClick,
@@ -1285,6 +1454,7 @@ export function RoomPageView({
       onToggleMicSelector={onToggleMicSelector}
       onTogglePublicRoom={onTogglePublicRoom}
       onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
+      onUpdateRoomTranscriptionLanguage={onUpdateRoomTranscriptionLanguage}
       onUpdateVoiceSource={onUpdateVoiceSource}
       onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
       overallInsights={overallInsights}

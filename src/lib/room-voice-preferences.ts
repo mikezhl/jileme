@@ -1,4 +1,5 @@
 import {
+  RoomTranscriptionLanguage as PrismaRoomTranscriptionLanguage,
   RoomVoiceSource as PrismaRoomVoiceSource,
   type TranscriptionProvider as PrismaTranscriptionProvider,
 } from "@prisma/client";
@@ -9,17 +10,25 @@ import {
   toPrismaTranscriptionProvider,
   type TranscriptionProviderName,
 } from "@/features/transcription/core/providers";
+import {
+  fromPrismaRoomTranscriptionLanguage,
+  normalizeRoomTranscriptionLanguagePreference,
+  toPrismaRoomTranscriptionLanguage,
+  type RoomTranscriptionLanguagePreference,
+} from "@/lib/room-transcription-language";
 
 export type RoomVoiceSourcePreference = "user" | "system";
 
 export type RoomVoiceRuntimePreferences = {
   sourcePreference: RoomVoiceSourcePreference | null;
   transcriptionProviderPreference: TranscriptionProviderName | null;
+  transcriptionLanguagePreference: RoomTranscriptionLanguagePreference | null;
 };
 
 type RoomVoicePreferenceRecord = {
   voiceSourcePreference?: PrismaRoomVoiceSource | null;
   transcriptionProviderPreference?: PrismaTranscriptionProvider | null;
+  transcriptionLanguagePreference?: PrismaRoomTranscriptionLanguage | null;
 };
 
 export function parseRoomVoiceSourcePreference(
@@ -64,6 +73,18 @@ export function normalizeRoomTranscriptionProviderPreference(
   return parseTranscriptionProviderName(value);
 }
 
+export function normalizeRoomTranscriptionLanguageSetting(
+  value: string | null | undefined,
+): RoomTranscriptionLanguagePreference | null {
+  return normalizeRoomTranscriptionLanguagePreference(value);
+}
+
+export function toPrismaRoomTranscriptionLanguagePreference(
+  value: RoomTranscriptionLanguagePreference | null,
+): PrismaRoomTranscriptionLanguage | null {
+  return toPrismaRoomTranscriptionLanguage(value);
+}
+
 export function getRoomVoiceRuntimePreferences(
   record: RoomVoicePreferenceRecord,
 ): RoomVoiceRuntimePreferences {
@@ -72,5 +93,8 @@ export function getRoomVoiceRuntimePreferences(
     transcriptionProviderPreference: record.transcriptionProviderPreference
       ? fromPrismaTranscriptionProvider(record.transcriptionProviderPreference)
       : null,
+    transcriptionLanguagePreference: fromPrismaRoomTranscriptionLanguage(
+      record.transcriptionLanguagePreference,
+    ),
   };
 }

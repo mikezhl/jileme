@@ -31,6 +31,7 @@ async function disconnectActiveVoiceRoom(
     createdById: string | null;
     voiceSourcePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["voiceSourcePreference"];
     transcriptionProviderPreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionProviderPreference"];
+    transcriptionLanguagePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionLanguagePreference"];
   },
 ) {
   const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
@@ -85,6 +86,7 @@ export async function POST(_request: Request, context: RouteContext) {
         createdById: true,
         voiceSourcePreference: true,
         transcriptionProviderPreference: true,
+        transcriptionLanguagePreference: true,
         endedAt: true,
       },
     });
@@ -121,6 +123,7 @@ export async function POST(_request: Request, context: RouteContext) {
         createdById: true,
         voiceSourcePreference: true,
         transcriptionProviderPreference: true,
+        transcriptionLanguagePreference: true,
       },
     });
 

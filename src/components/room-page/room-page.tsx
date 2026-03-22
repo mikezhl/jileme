@@ -232,6 +232,9 @@ export default function RoomPageClient({
       onTogglePublicRoom={() => {
         void togglePublicRoom();
       }}
+      onUpdateRoomTranscriptionLanguage={(transcriptionLanguage) => {
+        void updateVoiceSettings({ transcriptionLanguage });
+      }}
       onUpdateVoiceSource={(source) => {
         void updateVoiceSettings({ source });
       }}

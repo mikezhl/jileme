@@ -1504,6 +1504,98 @@ a:focus-visible {
   letter-spacing: -0.01em;
 }
 
+.room-transcription-language-slider {
+  --room-transcription-language-gap: 3px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 2px;
+  padding: var(--room-transcription-language-gap);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, var(--line));
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 92%, white 8%) 0%, var(--surface) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.room-transcription-language-slider:hover {
+  border-color: color-mix(in srgb, var(--foreground) 16%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, white 4%) 0%, color-mix(in srgb, var(--surface) 88%, white 12%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+.room-transcription-language-slider.locked {
+  cursor: not-allowed;
+}
+
+.room-transcription-language-slider-thumb {
+  position: absolute;
+  top: var(--room-transcription-language-gap);
+  left: var(--room-transcription-language-gap);
+  width: calc((100% - (var(--room-transcription-language-gap) * 2)) / 3);
+  height: calc(100% - (var(--room-transcription-language-gap) * 2));
+  border-radius: 999px;
+  background: var(--foreground);
+  box-shadow:
+    0 8px 18px -14px rgba(15, 23, 42, 0.4),
+    0 2px 6px rgba(15, 23, 42, 0.16);
+  transform: translateX(calc(var(--room-transcription-language-index, 0) * 100%));
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.room-transcription-language-slider-option {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted));
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.room-transcription-language-slider-option.active {
+  color: var(--background);
+}
+
+.room-transcription-language-slider-option:disabled {
+  cursor: not-allowed;
+}
+
+.room-transcription-language-slider.locked .room-transcription-language-slider-option {
+  cursor: not-allowed;
+}
+
+.room-transcription-language-slider-label {
+  display: block;
+  width: 100%;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .provider-chip-switch {
   flex-shrink: 0;
   display: inline-flex;

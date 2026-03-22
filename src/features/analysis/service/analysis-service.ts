@@ -57,6 +57,7 @@ async function relayAiMessage(
     createdById: string | null;
     voiceSourcePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["voiceSourcePreference"];
     transcriptionProviderPreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionProviderPreference"];
+    transcriptionLanguagePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionLanguagePreference"];
   },
   message: ReturnType<typeof toChatMessage>,
 ) {
@@ -112,6 +113,7 @@ export async function executeRealtimeAnalysisForRoomRef(roomRefId: string): Prom
       createdById: true,
       voiceSourcePreference: true,
       transcriptionProviderPreference: true,
+      transcriptionLanguagePreference: true,
     },
   });
   if (!room) {
@@ -259,6 +261,7 @@ export async function executeFinalSummaryForRoomRef(roomRefId: string): Promise<
       createdById: true,
       voiceSourcePreference: true,
       transcriptionProviderPreference: true,
+      transcriptionLanguagePreference: true,
     },
   });
   if (!room) {

@@ -4,6 +4,7 @@ import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/r
 import { requireApiUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
 import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
+import { DEFAULT_UI_LANGUAGE, normalizeUiLanguage } from "@/lib/ui-language";
 import {
   createOwnedRoom,
   ensureRoomParticipant,
@@ -16,6 +17,7 @@ export const runtime = "nodejs";
 type BootstrapRequest =
   | {
       action: "create";
+      uiLanguage?: string;
     }
   | {
       action: "join";
@@ -36,7 +38,10 @@ export async function POST(request: Request) {
 
     const room =
       body.action === "create"
-        ? await createOwnedRoom(user.id)
+        ? await createOwnedRoom(
+            user.id,
+            normalizeUiLanguage(body.uiLanguage) ?? DEFAULT_UI_LANGUAGE,
+          )
         : await (async () => {
             const roomId = normalizeRoomId((body as { roomId?: string }).roomId);
             if (!roomId) {

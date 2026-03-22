@@ -4,6 +4,11 @@ import { Prisma, RoomStatus } from "@prisma/client";
 
 import { DEFAULT_DISPLAY_NAME } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import {
+  getDefaultRoomTranscriptionLanguageForUiLanguage,
+  toPrismaRoomTranscriptionLanguage,
+} from "@/lib/room-transcription-language";
+import { DEFAULT_UI_LANGUAGE, type UiLanguage } from "@/lib/ui-language";
 
 export function normalizeDisplayName(name?: string | null): string {
   const normalized = name?.trim();
@@ -28,7 +33,7 @@ export function generateParticipantId(displayName: string): string {
   return `${slug || "guest"}-${uuidv4().slice(0, 8)}`;
 }
 
-export async function createOwnedRoom(userId: string) {
+export async function createOwnedRoom(userId: string, uiLanguage: UiLanguage = DEFAULT_UI_LANGUAGE) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const roomId = generateRoomId();
 
@@ -37,6 +42,9 @@ export async function createOwnedRoom(userId: string) {
         data: {
           roomId,
           createdById: userId,
+          transcriptionLanguagePreference: toPrismaRoomTranscriptionLanguage(
+            getDefaultRoomTranscriptionLanguageForUiLanguage(uiLanguage),
+          ),
           participants: {
             create: {
               userId,

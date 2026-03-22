@@ -16,6 +16,7 @@ import {
   getPlatformTranscriptionUsageGate,
 } from "@/lib/platform-usage-limits";
 import { type KeySource } from "@/lib/provider-sources";
+import { inferRoomTranscriptionLanguagePreference, type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import {
   type RoomVoiceRuntimePreferences,
   type RoomVoiceSourcePreference,
@@ -39,7 +40,7 @@ export type DeepgramTranscriptionRuntime = {
   configured: boolean;
   credentialMask: string | null;
   model: string;
-  language: string;
+  language: string | null;
   interimResults: boolean;
   punctuate: boolean;
   smartFormat: boolean;
@@ -64,7 +65,7 @@ export type DashScopeTranscriptionRuntime = {
   credentialMask: string | null;
   baseUrl: string;
   model: string;
-  language: string;
+  language: string | null;
   inputAudioFormat: string;
   sampleRate: number;
   serverVad: boolean;
@@ -88,8 +89,10 @@ export type RoomVoiceTranscriptionOption = {
 export type RoomVoiceSelectionState = {
   sourcePreference: RoomVoiceSourcePreference | null;
   transcriptionProviderPreference: TranscriptionProviderName | null;
+  transcriptionLanguagePreference: RoomTranscriptionLanguagePreference | null;
   selectedSource: RoomVoiceSourcePreference | null;
   sourceOptions: RoomVoiceSourceOption[];
+  selectedTranscriptionLanguage: RoomTranscriptionLanguagePreference;
   selectedTranscriptionProvider: TranscriptionProviderName | null;
   transcriptionOptions: RoomVoiceTranscriptionOption[];
 };
@@ -194,8 +197,21 @@ export function getPlatformDefaultTranscriptionProvider(): TranscriptionProvider
 function buildDeepgramRuntime(
   apiKey: string | null,
   source: KeySource,
+  languagePreference?: RoomTranscriptionLanguagePreference | null,
 ): DeepgramTranscriptionRuntime {
   const configured = isValidTranscriptionApiKey("deepgram", apiKey);
+  const envDetectLanguage = parseBooleanEnv(optionalEnv("DEEPGRAM_DETECT_LANGUAGE"), false);
+  const resolvedLanguage =
+    languagePreference === "auto"
+      ? null
+      : languagePreference === "en"
+        ? "en"
+        : languagePreference === "zh"
+          ? "zh"
+          : envDetectLanguage
+            ? null
+            : (optionalEnv("DEEPGRAM_LANGUAGE") ?? "zh");
+  const detectLanguage = languagePreference === null ? envDetectLanguage : languagePreference === "auto";
   return {
     provider: "deepgram",
     apiKey,
@@ -203,7 +219,7 @@ function buildDeepgramRuntime(
     configured,
     credentialMask: source === "user" ? maskSecret(apiKey) : null,
     model: optionalEnv("DEEPGRAM_MODEL") ?? "nova-2",
-    language: optionalEnv("DEEPGRAM_LANGUAGE") ?? "zh",
+    language: resolvedLanguage,
     interimResults: parseBooleanEnv(optionalEnv("DEEPGRAM_INTERIM_RESULTS"), true),
     punctuate: parseBooleanEnv(optionalEnv("DEEPGRAM_PUNCTUATE"), true),
     smartFormat: parseBooleanEnv(optionalEnv("DEEPGRAM_SMART_FORMAT"), true),
@@ -211,7 +227,7 @@ function buildDeepgramRuntime(
     profanityFilter: parseBooleanEnv(optionalEnv("DEEPGRAM_PROFANITY_FILTER"), false),
     fillerWords: parseBooleanEnv(optionalEnv("DEEPGRAM_FILLER_WORDS"), false),
     numerals: parseBooleanEnv(optionalEnv("DEEPGRAM_NUMERALS"), false),
-    detectLanguage: parseBooleanEnv(optionalEnv("DEEPGRAM_DETECT_LANGUAGE"), false),
+    detectLanguage,
     noDelay: parseBooleanEnv(optionalEnv("DEEPGRAM_NO_DELAY"), true),
     diarize: parseBooleanEnv(optionalEnv("DEEPGRAM_DIARIZE"), false),
     dictation: parseBooleanEnv(optionalEnv("DEEPGRAM_DICTATION"), false),
@@ -224,6 +240,7 @@ function buildDeepgramRuntime(
 function buildDashScopeRuntime(
   apiKey: string | null,
   source: KeySource,
+  languagePreference?: RoomTranscriptionLanguagePreference | null,
 ): DashScopeTranscriptionRuntime {
   const configured = isValidTranscriptionApiKey("dashscope", apiKey);
   return {
@@ -234,7 +251,14 @@ function buildDashScopeRuntime(
     credentialMask: source === "user" ? maskSecret(apiKey) : null,
     baseUrl: optionalEnv("DASHSCOPE_REALTIME_URL") ?? "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
     model: optionalEnv("DASHSCOPE_REALTIME_MODEL") ?? "qwen3-asr-flash-realtime",
-    language: optionalEnv("DASHSCOPE_REALTIME_LANGUAGE") ?? "zh",
+    language:
+      languagePreference === "auto"
+        ? null
+        : languagePreference === "en"
+          ? "en"
+          : languagePreference === "zh"
+            ? "zh"
+            : (optionalEnv("DASHSCOPE_REALTIME_LANGUAGE") ?? "zh"),
     inputAudioFormat: optionalEnv("DASHSCOPE_REALTIME_AUDIO_FORMAT") ?? "pcm",
     sampleRate: parseIntegerEnv(optionalEnv("DASHSCOPE_REALTIME_SAMPLE_RATE"), 16000),
     serverVad: parseBooleanEnv(optionalEnv("DASHSCOPE_REALTIME_SERVER_VAD"), true),
@@ -246,11 +270,12 @@ function buildRuntimeFromProvider(
   provider: TranscriptionProviderName,
   apiKey: string | null,
   source: KeySource,
+  languagePreference?: RoomTranscriptionLanguagePreference | null,
 ): ResolvedTranscriptionRuntime {
   if (provider === "dashscope") {
-    return buildDashScopeRuntime(apiKey, source);
+    return buildDashScopeRuntime(apiKey, source, languagePreference);
   }
-  return buildDeepgramRuntime(apiKey, source);
+  return buildDeepgramRuntime(apiKey, source, languagePreference);
 }
 
 function buildTranscriptionState(options: {
@@ -467,32 +492,56 @@ function buildSelectionState(options: {
     options.transcriberEnabled,
     options.contexts,
   );
+  const selectedTranscriptionLanguage =
+    options.preferences.transcriptionLanguagePreference ??
+    inferRoomTranscriptionLanguagePreference({
+      detectLanguage:
+        options.runtime.transcription?.provider === "deepgram"
+          ? options.runtime.transcription.detectLanguage
+          : false,
+      language: options.runtime.transcription?.language ?? null,
+    }) ??
+    "zh";
 
   return {
     sourcePreference: options.preferences.sourcePreference,
     transcriptionProviderPreference: options.preferences.transcriptionProviderPreference,
+    transcriptionLanguagePreference: options.preferences.transcriptionLanguagePreference,
     selectedSource,
     sourceOptions,
+    selectedTranscriptionLanguage,
     selectedTranscriptionProvider: options.runtime.transcription?.provider ?? null,
     transcriptionOptions,
   };
 }
 
 export function resolvePlatformTranscriptionRuntime(
-  options?: PlatformRuntimeOptions,
+  options?: PlatformRuntimeOptions & {
+    languagePreference?: RoomTranscriptionLanguagePreference | null;
+  },
 ): ResolvedTranscriptionRuntime {
   const provider = options?.provider ?? getPlatformDefaultTranscriptionProvider();
   if (provider === "dashscope") {
-    return buildDashScopeRuntime(optionalEnv("DASHSCOPE_API_KEY"), "system");
+    return buildDashScopeRuntime(
+      optionalEnv("DASHSCOPE_API_KEY"),
+      "system",
+      options?.languagePreference,
+    );
   }
-  return buildDeepgramRuntime(optionalEnv("DEEPGRAM_API_KEY"), "system");
+  return buildDeepgramRuntime(
+    optionalEnv("DEEPGRAM_API_KEY"),
+    "system",
+    options?.languagePreference,
+  );
 }
 
-function buildPlatformTranscriptionState(): TranscriptionRuntimeState {
+function buildPlatformTranscriptionState(
+  languagePreference?: RoomTranscriptionLanguagePreference | null,
+): TranscriptionRuntimeState {
   const runtimes = new Map(
     getSupportedTranscriptionProviders().map((provider) => [
       provider,
-      resolvePlatformTranscriptionRuntime({ provider }),
+      resolvePlatformTranscriptionRuntime({ provider, languagePreference }),
     ]),
   );
 
@@ -506,6 +555,7 @@ function buildPlatformTranscriptionState(): TranscriptionRuntimeState {
 
 async function buildUserTranscriptionState(
   ownerUserId: string | null | undefined,
+  languagePreference?: RoomTranscriptionLanguagePreference | null,
 ): Promise<TranscriptionRuntimeState> {
   if (!ownerUserId) {
     return buildTranscriptionState({
@@ -523,7 +573,12 @@ async function buildUserTranscriptionState(
   const runtimes = new Map(
     getSupportedTranscriptionProviders().map((provider) => [
       provider,
-      buildRuntimeFromProvider(provider, credentialMap.get(provider)?.apiKey ?? null, "user"),
+      buildRuntimeFromProvider(
+        provider,
+        credentialMap.get(provider)?.apiKey ?? null,
+        "user",
+        languagePreference,
+      ),
     ]),
   );
 
@@ -551,11 +606,15 @@ export async function resolveRoomVoiceRuntimeForOwner(
   const normalizedPreferences: RoomVoiceRuntimePreferences = {
     sourcePreference: normalizeSourcePreferenceForMode(preferences?.sourcePreference, mode),
     transcriptionProviderPreference: preferences?.transcriptionProviderPreference ?? null,
+    transcriptionLanguagePreference: preferences?.transcriptionLanguagePreference ?? null,
   };
 
   const [userLivekit, userTranscription, systemQuotaGate] = await Promise.all([
     resolveUserOwnedLivekitCredentials(ownerUserId),
-    buildUserTranscriptionState(ownerUserId),
+    buildUserTranscriptionState(
+      ownerUserId,
+      normalizedPreferences.transcriptionLanguagePreference,
+    ),
     ownerUserId && transcriberEnabled
       ? getPlatformTranscriptionUsageGate(ownerUserId)
       : Promise.resolve({ exceeded: false } as const),
@@ -568,7 +627,9 @@ export async function resolveRoomVoiceRuntimeForOwner(
     },
     system: {
       livekit: resolvePlatformLivekitCredentials(),
-      transcription: buildPlatformTranscriptionState(),
+      transcription: buildPlatformTranscriptionState(
+        normalizedPreferences.transcriptionLanguagePreference,
+      ),
     },
   } satisfies Record<RoomVoiceSourcePreference, VoiceSourceContext>;
 

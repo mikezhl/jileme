@@ -255,7 +255,7 @@ class DashScopeRealtimeSession implements RealtimeTranscriptionProviderSession {
               type: "transcript",
               text: transcriptText,
               isFinal: false,
-              language: this.runtime.language,
+              language: this.runtime.language ?? undefined,
             });
           }
           break;
@@ -272,7 +272,7 @@ class DashScopeRealtimeSession implements RealtimeTranscriptionProviderSession {
               type: "transcript",
               text: message.transcript,
               isFinal: true,
-              language: this.runtime.language,
+              language: this.runtime.language ?? undefined,
             });
           }
           break;
@@ -370,9 +370,11 @@ class DashScopeRealtimeSession implements RealtimeTranscriptionProviderSession {
         modalities: ["text"],
         input_audio_format: this.runtime.inputAudioFormat,
         sample_rate: this.runtime.sampleRate,
-        input_audio_transcription: {
-          language: this.runtime.language,
-        },
+        input_audio_transcription: this.runtime.language
+          ? {
+              language: this.runtime.language,
+            }
+          : {},
         turn_detection: this.runtime.serverVad
           ? {
               type: "server_vad",
