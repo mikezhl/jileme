@@ -617,7 +617,7 @@ function RoomSidebarPanel({
       </div>
 
       <div className="sidebar-section sidebar-section-bottom">
-        <h4>{t("房间可见性", "Room Visibility")}</h4>
+        <h4>{t("服务状态", "Providers")}</h4>
         <div
           className="key-status-grid"
           style={{ fontSize: "0.75rem", gap: "8px", background: "transparent", padding: 0 }}
@@ -649,15 +649,7 @@ function RoomSidebarPanel({
               </span>
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="sidebar-section">
-        <h4>{t("服务状态", "Providers")}</h4>
-        <div
-          className="key-status-grid"
-          style={{ fontSize: "0.75rem", gap: "8px", background: "transparent", padding: 0 }}
-        >
           <div className="provider-tooltip">
             <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
               <div className="provider-chip-main">

@@ -1,0 +1,378 @@
+import Link from "next/link";
+
+import { type ChatMessage } from "@/lib/chat-types";
+import { getRoomDisplayName } from "@/lib/room-name";
+
+type PublicRoomReadonlyPageProps = {
+  room: {
+    roomId: string;
+    roomName: string | null;
+    status: "ACTIVE" | "ENDED";
+    updatedAt: string;
+    endedAt: string | null;
+    messageCount: number;
+    participantCount: number;
+    ownerUsername: string | null;
+  };
+  messages: ChatMessage[];
+};
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function formatMessageTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function getRoomStatusLabel(status: PublicRoomReadonlyPageProps["room"]["status"]) {
+  return status === "ENDED" ? "已结束" : "进行中";
+}
+
+function getMessageTitle(message: ChatMessage) {
+  if (message.type === "analysis") {
+    return "AI 分析";
+  }
+  if (message.type === "summary") {
+    return "最终总结";
+  }
+
+  return message.senderName || "匿名";
+}
+
+function getMessageSourceLabel(message: ChatMessage) {
+  switch (message.type) {
+    case "transcript":
+      return "音";
+    case "analysis":
+      return "析";
+    case "summary":
+      return "总";
+    default:
+      return "文";
+  }
+}
+
+function parseRealtimeAnalysisMessage(message: ChatMessage) {
+  if (message.type !== "analysis") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(message.content) as unknown;
+    if (!parsed || typeof parsed !== "object" || !("type" in parsed) || parsed.type !== "realtime-analysis") {
+      return null;
+    }
+
+    return parsed as {
+      insights?: {
+        currentRound?: {
+          A?: string;
+          B?: string;
+        };
+      };
+      roundScores?: {
+        A?: {
+          delta?: number | string;
+          reason?: string;
+        } | null;
+        B?: {
+          delta?: number | string;
+          reason?: string;
+        } | null;
+      };
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getAnalysisInsight(
+  content: ReturnType<typeof parseRealtimeAnalysisMessage>,
+  side: "A" | "B",
+) {
+  const value = content?.insights?.currentRound?.[side];
+  return typeof value === "string" ? value : "";
+}
+
+function getAnalysisRoundScore(
+  content: ReturnType<typeof parseRealtimeAnalysisMessage>,
+  side: "A" | "B",
+) {
+  const value = content?.roundScores?.[side];
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rawDelta = value.delta;
+  const delta =
+    typeof rawDelta === "number"
+      ? rawDelta
+      : typeof rawDelta === "string" && rawDelta.trim()
+        ? Number(rawDelta)
+        : Number.NaN;
+  const reason = typeof value.reason === "string" ? value.reason : "";
+
+  if (!Number.isFinite(delta) && !reason) {
+    return null;
+  }
+
+  return {
+    delta: Number.isFinite(delta) ? delta : 0,
+    reason,
+  };
+}
+
+function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
+  const content = parseRealtimeAnalysisMessage(message);
+  if (!content) {
+    return (
+      <article className="bubble analysis announcement">
+        <header className="bubble-meta">
+          <strong>{getMessageTitle(message)}</strong>
+          <span className="bubble-source">{getMessageSourceLabel(message)}</span>
+          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+        </header>
+        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {message.content}
+        </p>
+      </article>
+    );
+  }
+
+  const scoreA = getAnalysisRoundScore(content, "A");
+  const scoreB = getAnalysisRoundScore(content, "B");
+  const insightA = getAnalysisInsight(content, "A");
+  const insightB = getAnalysisInsight(content, "B");
+
+  return (
+    <article className="bubble analysis announcement">
+      <header className="bubble-meta">
+        <strong>{getMessageTitle(message)}</strong>
+        <span className="bubble-source">{getMessageSourceLabel(message)}</span>
+        <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+      </header>
+
+      <div className="analysis-grid">
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">A方</div>
+            {scoreA ? (
+              <span className="analysis-delta-tag">
+                {scoreA.delta >= 0 ? "+" : ""}
+                {scoreA.delta}
+              </span>
+            ) : null}
+          </div>
+          <p className="analysis-insight">{insightA || "本轮无发言"}</p>
+          {scoreA?.reason ? <span className="analysis-score-reason">{scoreA.reason}</span> : null}
+        </div>
+
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">B方</div>
+            {scoreB ? (
+              <span className="analysis-delta-tag">
+                {scoreB.delta >= 0 ? "+" : ""}
+                {scoreB.delta}
+              </span>
+            ) : null}
+          </div>
+          <p className="analysis-insight">{insightB || "本轮无发言"}</p>
+          {scoreB?.reason ? <span className="analysis-score-reason">{scoreB.reason}</span> : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomReadonlyPageProps) {
+  const roomDisplayName = getRoomDisplayName(room.roomName, room.roomId);
+  const nextPath = `/${encodeURIComponent(room.roomId)}`;
+  const loginHref = `/?auth=login&next=${encodeURIComponent(nextPath)}`;
+  const hasEnded = room.status === "ENDED";
+
+  return (
+    <main className="room-page">
+      <section className="room-shell room-shell-chat">
+        <header className="room-header">
+          <div className="room-header-title">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <h1>{roomDisplayName}</h1>
+              <span className="room-list-status" data-status={room.status}>
+                {getRoomStatusLabel(room.status)}
+              </span>
+              <span className="room-list-status room-list-status-public">公开只读</span>
+            </div>
+
+            <div className="room-meta-row" style={{ flexWrap: "wrap" }}>
+              <span className="room-header-code" style={{ cursor: "default" }}>
+                {room.roomId}
+              </span>
+              <span className="room-meta-divider" aria-hidden="true">
+                |
+              </span>
+              <span>{room.participantCount} 人</span>
+              <span className="room-meta-divider" aria-hidden="true">
+                |
+              </span>
+              <span>{room.messageCount} 条消息</span>
+              <span className="room-meta-divider" aria-hidden="true">
+                |
+              </span>
+              <span>更新于 {formatDateTime(room.updatedAt)}</span>
+            </div>
+          </div>
+
+          <Link className="room-back-link" href="/" title="返回首页">
+            <span className="desktop-only ghost-btn" style={{ height: "40px" }}>
+              返回
+            </span>
+            <span className="mobile-only-flex back-icon-btn">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+            </span>
+          </Link>
+
+          <div className="room-actions">
+            <Link className="primary-btn" href={loginHref} style={{ height: "40px" }}>
+              登录后参与
+            </Link>
+          </div>
+        </header>
+
+        <div
+          className="key-status-grid"
+          style={{
+            width: "calc(100% - 48px)",
+            maxWidth: "800px",
+            margin: "0 auto 16px",
+          }}
+        >
+          <strong>当前为匿名只读浏览</strong>
+          <span>不会建立实时连接，不会加入通信，也不会调用房间运行时接口。</span>
+          <span>{hasEnded ? "房间已结束，仅保留历史内容查看。" : "如需发言、上麦或参与实时对话，请先登录。"}</span>
+        </div>
+
+        <section className="chat-panel">
+          <div className="chat-scroll">
+            {messages.length === 0 ? (
+              <p className="empty-chat">暂无对话内容。</p>
+            ) : (
+              messages.map((message) => {
+                const isAnnouncement =
+                  message.type === "analysis" || message.type === "summary";
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`message-row ${isAnnouncement ? "announcement" : "other"}`}
+                  >
+                    {message.type === "analysis" ? (
+                      <ReadonlyAnalysisMessage message={message} />
+                    ) : (
+                      <article
+                        className={`bubble ${message.type} ${
+                          isAnnouncement ? "announcement" : "other"
+                        }`}
+                      >
+                        <header className="bubble-meta">
+                          <strong>{getMessageTitle(message)}</strong>
+                          <span className="bubble-source">{getMessageSourceLabel(message)}</span>
+                          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+                        </header>
+                        <p
+                          style={{
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {message.content}
+                        </p>
+                      </article>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        <div className="chat-form room-chat-form">
+          <textarea
+            rows={1}
+            readOnly
+            value=""
+            placeholder="匿名只读模式，登录后可参与对话"
+            disabled
+            style={{ overflow: "hidden" }}
+          />
+          <div className="room-chat-controls">
+            <Link className="primary-btn" href={loginHref}>
+              登录后参与
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <aside className="room-sidebar">
+        <div className="sidebar-section">
+          <h4>房间信息</h4>
+          <div className="key-status-grid">
+            <span>状态：{getRoomStatusLabel(room.status)}</span>
+            <span>可见性：公开</span>
+            <span>房主：{room.ownerUsername ? `@${room.ownerUsername}` : "未知"}</span>
+            <span>成员：{room.participantCount}</span>
+            <span>消息：{room.messageCount}</span>
+            <span>最近更新：{formatDateTime(room.updatedAt)}</span>
+            {room.endedAt ? <span>结束时间：{formatDateTime(room.endedAt)}</span> : null}
+          </div>
+        </div>
+
+        <div className="sidebar-section">
+          <h4>访问限制</h4>
+          <div className="overall-insight-box">
+            <p className="analysis-insight" style={{ margin: 0, fontSize: "0.9rem" }}>
+              匿名用户仅查看当前已保存的历史消息。
+            </p>
+            <p className="analysis-insight" style={{ margin: 0, fontSize: "0.9rem" }}>
+              不接入 LiveKit、语音转录、实时分析、轮询更新或发言能力。
+            </p>
+          </div>
+        </div>
+      </aside>
+    </main>
+  );
+}
