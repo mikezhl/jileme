@@ -11,18 +11,22 @@ import {
 } from "react";
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
+import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
+import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
 import { type ChatMessage } from "@/lib/chat-types";
 import { type UiLanguage } from "@/lib/ui-language";
 
 import {
   formatTime,
+  formatVoiceSourceValue,
+  formatVoiceTranscriptionValue,
+  formatVoiceTransportValue,
   getAnalysisInsight,
   getAnalysisProviderDetails,
   getAnalysisProviderLabel,
   getAnalysisRoundScore,
-  getVoiceProviderDetails,
-  getVoiceProviderLabel,
+  getVoiceProviderSummary,
   isOwnMessage,
   parseRealtimeAnalysisMessage,
   type ActiveStatusTooltipState,
@@ -79,6 +83,8 @@ type RoomPageViewProps = {
   onTogglePublicRoom: () => void;
   onToggleRawMessage: (nextId: string | null) => void;
   onToggleRealtimeAnalysis: () => void;
+  onUpdateVoiceSource: (source: RoomVoiceSourcePreference) => void;
+  onUpdateVoiceTranscriptionProvider: (provider: TranscriptionProviderName) => void;
   onTranscriptionStatusClick: () => void;
   overallInsights: {
     own: string;
@@ -115,6 +121,7 @@ type RoomPageViewProps = {
   userId: string;
   username: string;
   voiceCallStarting: boolean;
+  voiceSettingsPending: boolean;
 };
 
 type AnalysisMessageProps = {
@@ -473,6 +480,274 @@ function RoomMembersSummary({
   );
 }
 
+type PopoverInlineMenuOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
+function PopoverInlineMenu({
+  ariaLabel,
+  disabled,
+  isOpen,
+  onChange,
+  onOpenChange,
+  options,
+  placeholder,
+  value,
+}: {
+  ariaLabel: string;
+  disabled: boolean;
+  isOpen: boolean;
+  onChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
+  options: PopoverInlineMenuOption[];
+  placeholder: string;
+  value: string;
+}) {
+  const selectedOption = options.find((option) => option.value === value);
+
+  return (
+    <span className={`provider-popover-control ${isOpen ? "active" : ""}`}>
+      <button
+        type="button"
+        className="provider-popover-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        onClick={() => onOpenChange(!isOpen)}
+      >
+        <span className="provider-popover-trigger-value">
+          {selectedOption?.label ?? placeholder}
+        </span>
+      </button>
+
+      {isOpen ? (
+        <div className="provider-popover-menu" role="listbox" aria-label={ariaLabel}>
+          <div className="provider-popover-menu-list">
+            {options.map((option) => {
+              const isActive = option.value === value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isActive}
+                  className={`provider-popover-menu-item ${isActive ? "active" : ""}`}
+                  disabled={option.disabled}
+                  onClick={() => {
+                    if (option.disabled || isActive) {
+                      onOpenChange(false);
+                      return;
+                    }
+                    onChange(option.value);
+                    onOpenChange(false);
+                  }}
+                >
+                  <span className="provider-popover-menu-item-label">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+function VoiceProviderPopover({
+  language,
+  onUpdateVoiceSource,
+  onUpdateVoiceTranscriptionProvider,
+  roomMeta,
+  t,
+  voiceSettingsPending,
+}: Pick<
+  RoomPageViewProps,
+  | "language"
+  | "onUpdateVoiceSource"
+  | "onUpdateVoiceTranscriptionProvider"
+  | "roomMeta"
+  | "t"
+  | "voiceSettingsPending"
+>) {
+  const [openMenu, setOpenMenu] = useState<"source" | "transcription" | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const voice = roomMeta.providers.voice;
+  const isOwner = roomMeta.isCreator;
+  const sourceValue = voice.selection.selectedSource ?? "";
+  const transcriptionValue = voice.selection.selectedTranscriptionProvider ?? "";
+  const availableSourceCount = voice.selection.sourceOptions.filter((option) => option.available).length;
+  const availableTranscriptionCount = voice.selection.transcriptionOptions.filter(
+    (option) => option.available,
+  ).length;
+  const canSelectSource =
+    isOwner &&
+    (availableSourceCount > 1 ||
+      Boolean(
+        voice.selection.selectedSource &&
+          voice.selection.sourceOptions.some(
+            (option) => option.value === voice.selection.selectedSource && !option.available,
+          ),
+      ));
+  const canSelectTranscription =
+    isOwner &&
+    voice.transcriberEnabled &&
+    (availableTranscriptionCount > 1 ||
+      Boolean(
+        voice.selection.selectedTranscriptionProvider &&
+          voice.selection.transcriptionOptions.some(
+            (option) =>
+              option.value === voice.selection.selectedTranscriptionProvider && !option.available,
+          ),
+      ));
+  const controlsDisabled = voiceSettingsPending || roomMeta.status === "ENDED";
+  const sourceOptions: PopoverInlineMenuOption[] = voice.selection.sourceOptions.map((option) => ({
+    value: option.value,
+    label: formatVoiceSourceValue(option.value, language),
+    disabled: !option.available,
+  }));
+  const transcriptionOptions: PopoverInlineMenuOption[] = voice.selection.transcriptionOptions.map((option) => ({
+    value: option.value,
+    label: option.value === "deepgram" ? "Deepgram" : "DashScope",
+    disabled: !option.available,
+  }));
+
+  useEffect(() => {
+    if (openMenu === null) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (popoverRef.current?.contains(target)) {
+        return;
+      }
+
+      setOpenMenu(null);
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenu]);
+
+  return (
+    <div className="provider-tooltip">
+      <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
+        <div className="provider-chip-main">
+          <span className="provider-chip-label">{t("语音与转录", "Voice & Transcription")}</span>
+          <strong
+            className="provider-chip-value provider-chip-value-voice"
+            title={getVoiceProviderSummary(voice, language)}
+          >
+            {getVoiceProviderSummary(voice, language)}
+          </strong>
+        </div>
+      </div>
+      <div ref={popoverRef} className="provider-popover provider-popover-form" role="tooltip">
+        <div className="provider-popover-title">{t("语音与转录", "Voice & Transcription")}</div>
+
+        <div className="provider-popover-row provider-popover-row-control">
+          <span className="provider-popover-label">
+            {t("语音与转录来源", "Voice & transcription source")}
+          </span>
+          {canSelectSource ? (
+            <PopoverInlineMenu
+              ariaLabel={t("选择语音与转录来源", "Select voice and transcription source")}
+              disabled={controlsDisabled}
+              isOpen={openMenu === "source"}
+              options={sourceOptions}
+              placeholder={t("未设置", "Not set")}
+              value={sourceValue}
+              onChange={(nextValue) => {
+                const typedValue = nextValue as RoomVoiceSourcePreference;
+                if (!typedValue || typedValue === voice.selection.selectedSource) {
+                  return;
+                }
+                onUpdateVoiceSource(typedValue);
+              }}
+              onOpenChange={(nextOpen) => setOpenMenu(nextOpen ? "source" : null)}
+            />
+          ) : (
+            <strong className="provider-popover-value">
+              {formatVoiceSourceValue(
+                voice.selection.selectedSource ?? voice.transport.source,
+                language,
+              )}
+            </strong>
+          )}
+        </div>
+
+        <div className="provider-popover-row">
+          <span className="provider-popover-label">{t("语音通道", "Voice transport")}</span>
+          <strong className="provider-popover-value">
+            {formatVoiceTransportValue(voice, language)}
+          </strong>
+        </div>
+
+        <div className="provider-popover-row provider-popover-row-control">
+          <span className="provider-popover-label">{t("转录通道", "Transcription channel")}</span>
+          {canSelectTranscription ? (
+            <PopoverInlineMenu
+              ariaLabel={t("选择转录通道", "Select transcription channel")}
+              disabled={controlsDisabled || !voice.selection.selectedSource}
+              isOpen={openMenu === "transcription"}
+              options={transcriptionOptions}
+              placeholder={t("未设置", "Not set")}
+              value={transcriptionValue}
+              onChange={(nextValue) => {
+                const typedValue = nextValue as TranscriptionProviderName;
+                if (!typedValue || typedValue === voice.selection.selectedTranscriptionProvider) {
+                  return;
+                }
+                onUpdateVoiceTranscriptionProvider(typedValue);
+              }}
+              onOpenChange={(nextOpen) => setOpenMenu(nextOpen ? "transcription" : null)}
+            />
+          ) : (
+            <strong className="provider-popover-value">
+              {formatVoiceTranscriptionValue(voice, language)}
+            </strong>
+          )}
+        </div>
+
+        {isOwner ? (
+          <p className="provider-popover-hint">
+            {voiceSettingsPending
+              ? t("正在应用新设置...", "Applying new voice settings...")
+              : t(
+                  "修改后会立即刷新房间配置；如果你正在通话，会安全重建当前语音链路。",
+                  "Changes apply immediately; if you are in a live call, the current voice runtime will be restarted safely.",
+                )}
+          </p>
+        ) : null}
+
+        {!voice.ready && voice.error ? (
+          <div className="provider-popover-row">
+            <span className="provider-popover-label">{t("错误", "Error")}</span>
+            <strong className="provider-popover-value">{voice.error}</strong>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function RoomSidebarPanel({
   analysisTogglePending,
   isZh,
@@ -485,6 +760,8 @@ function RoomSidebarPanel({
   onToggleMicSelector,
   onTogglePublicRoom,
   onToggleRealtimeAnalysis,
+  onUpdateVoiceSource,
+  onUpdateVoiceTranscriptionProvider,
   overallInsights,
   roomMeta,
   publicTogglePending,
@@ -492,6 +769,7 @@ function RoomSidebarPanel({
   selectedMicId,
   suggestions,
   t,
+  voiceSettingsPending,
 }: Pick<
   RoomPageViewProps,
   | "analysisTogglePending"
@@ -505,6 +783,8 @@ function RoomSidebarPanel({
   | "onToggleMicSelector"
   | "onTogglePublicRoom"
   | "onToggleRealtimeAnalysis"
+  | "onUpdateVoiceSource"
+  | "onUpdateVoiceTranscriptionProvider"
   | "overallInsights"
   | "roomMeta"
   | "publicTogglePending"
@@ -512,6 +792,7 @@ function RoomSidebarPanel({
   | "selectedMicId"
   | "suggestions"
   | "t"
+  | "voiceSettingsPending"
 >) {
   const selectedDevice = micDevices.find((device) => device.deviceId === selectedMicId);
   const selectedLabel = selectedDevice
@@ -649,25 +930,14 @@ function RoomSidebarPanel({
             </button>
           </div>
 
-          <div className="provider-tooltip">
-            <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
-              <div className="provider-chip-main">
-                <span className="provider-chip-label">{t("语音与转录", "Voice & Transcription")}</span>
-                <strong className="provider-chip-value">
-                  {getVoiceProviderLabel(roomMeta.providers.voice, language)}
-                </strong>
-              </div>
-            </div>
-            <div className="provider-popover" role="tooltip">
-              <div className="provider-popover-title">{t("语音与转录", "Voice & Transcription")}</div>
-              {getVoiceProviderDetails(roomMeta.providers.voice, language).map((item) => (
-                <div key={`voice-${item.label}`} className="provider-popover-row">
-                  <span className="provider-popover-label">{item.label}</span>
-                  <strong className="provider-popover-value">{item.value}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
+          <VoiceProviderPopover
+            language={language}
+            onUpdateVoiceSource={onUpdateVoiceSource}
+            onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
+            roomMeta={roomMeta}
+            t={t}
+            voiceSettingsPending={voiceSettingsPending}
+          />
 
           <div className="mic-selector-wrap" style={{ position: "relative" }}>
             <button
@@ -865,6 +1135,8 @@ export function RoomPageView({
   onTogglePublicRoom,
   onToggleRawMessage,
   onToggleRealtimeAnalysis,
+  onUpdateVoiceSource,
+  onUpdateVoiceTranscriptionProvider,
   onTranscriptionStatusClick,
   overallInsights,
   rawMessageId,
@@ -892,6 +1164,7 @@ export function RoomPageView({
   userId,
   username,
   voiceCallStarting,
+  voiceSettingsPending,
 }: RoomPageViewProps) {
   const statusTooltipRef = useRef<HTMLDivElement | null>(null);
 
@@ -932,6 +1205,8 @@ export function RoomPageView({
       onToggleMicSelector={onToggleMicSelector}
       onTogglePublicRoom={onTogglePublicRoom}
       onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
+      onUpdateVoiceSource={onUpdateVoiceSource}
+      onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
       overallInsights={overallInsights}
       roomMeta={roomMeta}
       publicTogglePending={publicTogglePending}
@@ -939,6 +1214,7 @@ export function RoomPageView({
       selectedMicId={selectedMicId}
       suggestions={suggestions}
       t={t}
+      voiceSettingsPending={voiceSettingsPending}
     />
   );
 

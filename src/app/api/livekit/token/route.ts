@@ -17,6 +17,7 @@ import { getRoomParticipationSnapshot } from "@/lib/room-members";
 import { buildRoomProviderModules } from "@/lib/provider-modules";
 import { prisma } from "@/lib/prisma";
 import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { buildRoomSpeakerProfile, resolveRoomSpeakerMode } from "@/lib/room-speaker";
 import { normalizeRoomId } from "@/lib/room-utils";
@@ -71,7 +72,10 @@ export async function POST(request: Request) {
       : null;
 
     const [voiceRuntime, llmRuntime] = await Promise.all([
-      resolveRoomVoiceRuntimeForOwner(room.createdById),
+      resolveRoomVoiceRuntimeForOwner(
+        room.createdById,
+        getRoomVoiceRuntimePreferences(room),
+      ),
       resolveConversationLlmRuntimeForOwner(room.createdById),
     ]);
     appendTranscriberRuntimeLog("transcriber-token-route", "resolved-room-runtime", {

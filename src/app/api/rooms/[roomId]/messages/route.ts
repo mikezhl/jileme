@@ -18,6 +18,7 @@ import { toChatMessage } from "@/lib/messages";
 import { assertRoomUserCanParticipate } from "@/lib/room-members";
 import { prisma } from "@/lib/prisma";
 import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { RoomAccessError, assertRoomNotEnded, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { buildRoomSpeakerProfile, resolveRoomSpeakerMode } from "@/lib/room-speaker";
 import { normalizeRoomId } from "@/lib/room-utils";
@@ -35,8 +36,19 @@ type PostMessageRequest = {
   speakerMode?: string;
 };
 
-async function relayMessageToRoom(roomId: string, ownerUserId: string | null, message: ChatMessage) {
-  const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(ownerUserId);
+async function relayMessageToRoom(
+  roomId: string,
+  roomPreferences: {
+    createdById: string | null;
+    voiceSourcePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["voiceSourcePreference"];
+    transcriptionProviderPreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionProviderPreference"];
+  },
+  message: ChatMessage,
+) {
+  const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
+    roomPreferences.createdById,
+    getRoomVoiceRuntimePreferences(roomPreferences),
+  );
   const credentials = voiceRuntime.livekit;
   if (!credentials.livekitUrl || !credentials.livekitApiKey || !credentials.livekitApiSecret) {
     return;
@@ -181,7 +193,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     try {
-      await relayMessageToRoom(roomId, room.createdById, chatMessage);
+      await relayMessageToRoom(roomId, room, chatMessage);
     } catch (relayError) {
       console.warn("Failed to relay text message through LiveKit data channel", {
         roomId,

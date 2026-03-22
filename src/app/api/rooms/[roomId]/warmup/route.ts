@@ -10,6 +10,7 @@ import { ensureTranscriberWorker } from "@/features/transcription/runtime/worker
 import { requireApiUser } from "@/lib/auth-guard";
 import { assertRoomUserCanParticipate } from "@/lib/room-members";
 import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
 
@@ -49,7 +50,10 @@ export async function POST(_request: Request, context: RouteContext) {
       return NextResponse.json({ ok: true, skipped: "transcriber-disabled" });
     }
 
-    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(room.createdById);
+    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
+      room.createdById,
+      getRoomVoiceRuntimePreferences(room),
+    );
     if (!voiceRuntime.ready || !voiceRuntime.transcription) {
       return NextResponse.json(
         {

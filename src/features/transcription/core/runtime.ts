@@ -16,12 +16,17 @@ import {
   getPlatformTranscriptionUsageGate,
 } from "@/lib/platform-usage-limits";
 import { type KeySource } from "@/lib/provider-sources";
+import {
+  type RoomVoiceRuntimePreferences,
+  type RoomVoiceSourcePreference,
+} from "@/lib/room-voice-preferences";
 import { maskSecret } from "@/lib/secret-utils";
 import {
   getStoredUserTranscriptionProviderCredentials,
   getUserDefaultTranscriptionProvider,
 } from "./user-settings";
 import {
+  getSupportedTranscriptionProviders,
   isValidTranscriptionApiKey,
   parseTranscriptionProviderName,
   type TranscriptionProviderName,
@@ -70,6 +75,25 @@ export type ResolvedTranscriptionRuntime =
   | DeepgramTranscriptionRuntime
   | DashScopeTranscriptionRuntime;
 
+export type RoomVoiceSourceOption = {
+  value: RoomVoiceSourcePreference;
+  available: boolean;
+};
+
+export type RoomVoiceTranscriptionOption = {
+  value: TranscriptionProviderName;
+  available: boolean;
+};
+
+export type RoomVoiceSelectionState = {
+  sourcePreference: RoomVoiceSourcePreference | null;
+  transcriptionProviderPreference: TranscriptionProviderName | null;
+  selectedSource: RoomVoiceSourcePreference | null;
+  sourceOptions: RoomVoiceSourceOption[];
+  selectedTranscriptionProvider: TranscriptionProviderName | null;
+  transcriptionOptions: RoomVoiceTranscriptionOption[];
+};
+
 export type RoomVoiceRuntime = {
   livekit: ResolvedLivekitCredentials;
   transcription: ResolvedTranscriptionRuntime | null;
@@ -77,6 +101,7 @@ export type RoomVoiceRuntime = {
   source: KeySource;
   ready: boolean;
   error: string | null;
+  selection: RoomVoiceSelectionState;
 };
 
 type PlatformRuntimeOptions = {
@@ -89,7 +114,70 @@ type VoiceRuntimeCandidate = {
   source: KeySource;
   ready: boolean;
   error: string | null;
+  selectedSource: RoomVoiceSourcePreference;
 };
+
+type TranscriptionRuntimeState = {
+  source: RoomVoiceSourcePreference;
+  keySource: Extract<KeySource, "system" | "user">;
+  runtimes: Map<TranscriptionProviderName, ResolvedTranscriptionRuntime>;
+  availableProviders: TranscriptionProviderName[];
+  defaultProvider: TranscriptionProviderName | null;
+};
+
+type VoiceSourceContext = {
+  livekit: ResolvedLivekitCredentials;
+  transcription: TranscriptionRuntimeState;
+};
+
+function buildTranscriptionOptions(
+  source: RoomVoiceSourcePreference | null,
+  transcriberEnabled: boolean,
+  contexts: {
+    user: VoiceSourceContext;
+    system: VoiceSourceContext;
+  },
+): RoomVoiceTranscriptionOption[] {
+  if (!transcriberEnabled || !source) {
+    return [];
+  }
+
+  const context = source === "user" ? contexts.user : contexts.system;
+  const available = new Set(context.transcription.availableProviders);
+  return getSupportedTranscriptionProviders().map((provider) => ({
+    value: provider,
+    available: available.has(provider),
+  }));
+}
+
+function buildVoiceRuntimeCandidate(
+  livekit: ResolvedLivekitCredentials,
+  transcription: ResolvedTranscriptionRuntime | null,
+  transcriberEnabled: boolean,
+  selectedSource: RoomVoiceSourcePreference,
+  error: string | null = null,
+): VoiceRuntimeCandidate {
+  const ready = livekit.configured && (!transcriberEnabled || Boolean(transcription?.configured));
+  return {
+    livekit,
+    transcription,
+    source: ready ? livekit.source : "unavailable",
+    ready,
+    error,
+    selectedSource,
+  };
+}
+
+function disablePlatformTranscriptionRuntime(
+  transcription: ResolvedTranscriptionRuntime,
+): ResolvedTranscriptionRuntime {
+  return {
+    ...transcription,
+    apiKey: null,
+    configured: false,
+    source: "system",
+  };
+}
 
 export function isTranscriberEnabled() {
   return parseBooleanEnv(optionalEnv("LIVEKIT_TRANSCRIBER_ENABLED"), true);
@@ -165,99 +253,140 @@ function buildRuntimeFromProvider(
   return buildDeepgramRuntime(apiKey, source);
 }
 
-export function resolvePlatformTranscriptionRuntime(
-  options?: PlatformRuntimeOptions,
-): ResolvedTranscriptionRuntime {
-  const provider = options?.provider ?? getPlatformDefaultTranscriptionProvider();
-  if (provider === "dashscope") {
-    return buildDashScopeRuntime(optionalEnv("DASHSCOPE_API_KEY"), "system");
-  }
-  return buildDeepgramRuntime(optionalEnv("DEEPGRAM_API_KEY"), "system");
+function buildTranscriptionState(options: {
+  source: RoomVoiceSourcePreference;
+  keySource: Extract<KeySource, "system" | "user">;
+  defaultProvider: TranscriptionProviderName | null;
+  runtimes: Map<TranscriptionProviderName, ResolvedTranscriptionRuntime>;
+}): TranscriptionRuntimeState {
+  return {
+    source: options.source,
+    keySource: options.keySource,
+    defaultProvider: options.defaultProvider,
+    runtimes: options.runtimes,
+    availableProviders: getSupportedTranscriptionProviders().filter(
+      (provider) => options.runtimes.get(provider)?.configured,
+    ),
+  };
 }
 
-export async function resolveUserDefaultTranscriptionRuntimeForOwner(
-  ownerUserId: string | null | undefined,
-): Promise<ResolvedTranscriptionRuntime | null> {
-  if (!ownerUserId) {
+function resolveConfiguredTranscriptionProvider(
+  state: TranscriptionRuntimeState,
+  providerPreference: TranscriptionProviderName | null,
+  options?: {
+    fallbackToAvailable?: boolean;
+  },
+): TranscriptionProviderName | null {
+  if (providerPreference) {
+    return state.runtimes.get(providerPreference)?.configured ? providerPreference : null;
+  }
+
+  if (state.defaultProvider && state.runtimes.get(state.defaultProvider)?.configured) {
+    return state.defaultProvider;
+  }
+
+  if (!options?.fallbackToAvailable) {
     return null;
   }
 
-  const [defaultProvider, credentialMap] = await Promise.all([
-    getUserDefaultTranscriptionProvider(ownerUserId),
-    getStoredUserTranscriptionProviderCredentials(ownerUserId),
-  ]);
+  return state.availableProviders[0] ?? null;
+}
 
-  if (!defaultProvider) {
+function resolveTranscriptionRuntimeFromConfiguredProvider(
+  state: TranscriptionRuntimeState,
+  provider: TranscriptionProviderName | null,
+): ResolvedTranscriptionRuntime | null {
+  if (!provider) {
     return null;
   }
 
-  const credentials = credentialMap.get(defaultProvider);
-  return buildRuntimeFromProvider(defaultProvider, credentials?.apiKey ?? null, "user");
+  return state.runtimes.get(provider) ?? buildRuntimeFromProvider(provider, null, state.keySource);
 }
 
-function buildVoiceRuntimeCandidate(
-  livekit: ResolvedLivekitCredentials,
-  transcription: ResolvedTranscriptionRuntime | null,
+function resolveTranscriptionRuntimeFromState(
+  state: TranscriptionRuntimeState,
   transcriberEnabled: boolean,
-  error: string | null = null,
+  providerPreference: TranscriptionProviderName | null,
+): ResolvedTranscriptionRuntime | null {
+  if (!transcriberEnabled) {
+    return null;
+  }
+
+  if (providerPreference) {
+    return resolveTranscriptionRuntimeFromConfiguredProvider(state, providerPreference);
+  }
+
+  const configuredProvider = resolveConfiguredTranscriptionProvider(state, null, {
+    fallbackToAvailable: true,
+  });
+  if (configuredProvider) {
+    return resolveTranscriptionRuntimeFromConfiguredProvider(state, configuredProvider);
+  }
+
+  if (state.defaultProvider) {
+    return resolveTranscriptionRuntimeFromConfiguredProvider(state, state.defaultProvider);
+  }
+
+  return null;
+}
+
+function buildCandidateFromContext(
+  context: VoiceSourceContext,
+  transcriberEnabled: boolean,
+  providerPreference: TranscriptionProviderName | null,
+  selectedSource: RoomVoiceSourcePreference,
 ): VoiceRuntimeCandidate {
-  const ready = livekit.configured && (!transcriberEnabled || Boolean(transcription?.configured));
-  return {
-    livekit,
-    transcription,
-    source: ready ? livekit.source : "unavailable",
-    ready,
-    error,
-  };
+  return buildVoiceRuntimeCandidate(
+    context.livekit,
+    resolveTranscriptionRuntimeFromState(
+      context.transcription,
+      transcriberEnabled,
+      providerPreference,
+    ),
+    transcriberEnabled,
+    selectedSource,
+  );
 }
 
-function disablePlatformTranscriptionRuntime(
-  transcription: ResolvedTranscriptionRuntime,
-): ResolvedTranscriptionRuntime {
-  return {
-    ...transcription,
-    apiKey: null,
-    configured: false,
-    source: "system",
-  };
+function getSupportedSourcePreferences(mode: UserProviderKeysMode): RoomVoiceSourcePreference[] {
+  if (mode === "false") {
+    return ["system"];
+  }
+  if (mode === "full") {
+    return ["user"];
+  }
+  return ["system", "user"];
 }
 
-async function resolvePlatformVoiceRuntimeCandidate(
-  ownerUserId: string | null | undefined,
-  transcriberEnabled: boolean,
-): Promise<VoiceRuntimeCandidate> {
-  const livekit = resolvePlatformLivekitCredentials();
-  const transcription = transcriberEnabled ? resolvePlatformTranscriptionRuntime() : null;
-  const candidate = buildVoiceRuntimeCandidate(livekit, transcription, transcriberEnabled);
-
-  if (!ownerUserId || !transcriberEnabled || !candidate.transcription || !candidate.ready) {
-    return candidate;
+function normalizeSourcePreferenceForMode(
+  sourcePreference: RoomVoiceSourcePreference | null | undefined,
+  mode: UserProviderKeysMode,
+): RoomVoiceSourcePreference | null {
+  const normalized = sourcePreference ?? null;
+  if (!normalized) {
+    return null;
   }
 
-  const usageGate = await getPlatformTranscriptionUsageGate(ownerUserId);
-  if (!usageGate.exceeded) {
-    return candidate;
+  if (mode === "false") {
+    return normalized === "system" ? normalized : null;
+  }
+  if (mode === "full") {
+    return normalized === "user" ? normalized : null;
   }
 
-  return {
-    livekit,
-    transcription: disablePlatformTranscriptionRuntime(candidate.transcription),
-    source: "system",
-    ready: false,
-    error: getPlatformTranscriptionQuotaExceededMessage(),
-  };
+  return normalized;
 }
 
-async function resolveUserVoiceRuntimeCandidate(
-  ownerUserId: string | null | undefined,
+function isSourceUsable(
+  context: VoiceSourceContext,
   transcriberEnabled: boolean,
-): Promise<VoiceRuntimeCandidate> {
-  const [livekit, transcription] = await Promise.all([
-    resolveUserOwnedLivekitCredentials(ownerUserId),
-    transcriberEnabled ? resolveUserDefaultTranscriptionRuntimeForOwner(ownerUserId) : Promise.resolve(null),
-  ]);
+  providerBlocked = false,
+): boolean {
+  if (providerBlocked || !context.livekit.configured) {
+    return false;
+  }
 
-  return buildVoiceRuntimeCandidate(livekit, transcription, transcriberEnabled);
+  return !transcriberEnabled || context.transcription.availableProviders.length > 0;
 }
 
 function buildVoiceRuntimeError(mode: UserProviderKeysMode, transcriberEnabled: boolean) {
@@ -269,12 +398,12 @@ function buildVoiceRuntimeError(mode: UserProviderKeysMode, transcriberEnabled: 
 
   if (mode === "true") {
     return transcriberEnabled
-      ? "Voice runtime requires either a complete room-owner LiveKit + default transcription bundle or a complete platform LiveKit + transcription bundle"
+      ? "Voice runtime requires either a complete room-owner LiveKit + transcription bundle or a complete platform LiveKit + transcription bundle"
       : "Voice runtime requires either room-owner LiveKit credentials or platform LiveKit credentials";
   }
 
   return transcriberEnabled
-    ? "Room owner must configure LiveKit credentials and a default transcription provider with valid credentials"
+    ? "Room owner must configure LiveKit credentials and a transcription provider with valid credentials"
     : "Room owner must configure LiveKit credentials";
 }
 
@@ -291,38 +420,244 @@ function pickPreferredUnavailableVoiceRuntime(
   return hasAnyUserState ? userRuntime : platformRuntime;
 }
 
+function applyPlatformUsageGate(
+  candidate: VoiceRuntimeCandidate,
+  quotaExceededMessage: string | null,
+): VoiceRuntimeCandidate {
+  if (!quotaExceededMessage || !candidate.ready || !candidate.transcription) {
+    return candidate;
+  }
+
+  return {
+    ...candidate,
+    transcription: disablePlatformTranscriptionRuntime(candidate.transcription),
+    source: "unavailable",
+    ready: false,
+    error: quotaExceededMessage,
+  };
+}
+
+function buildSelectionState(options: {
+  contexts: {
+    user: VoiceSourceContext;
+    system: VoiceSourceContext;
+  };
+  mode: UserProviderKeysMode;
+  preferences: RoomVoiceRuntimePreferences;
+  runtime: VoiceRuntimeCandidate;
+  transcriberEnabled: boolean;
+  systemSourceAvailable: boolean;
+  userSourceAvailable: boolean;
+}): RoomVoiceSelectionState {
+  const sourceOptions = getSupportedSourcePreferences(options.mode).map((value) => ({
+    value,
+    available: value === "system" ? options.systemSourceAvailable : options.userSourceAvailable,
+  }));
+  const availableSources = sourceOptions.filter((option) => option.available);
+
+  const selectedSource = options.preferences.sourcePreference
+    ? options.preferences.sourcePreference
+    : options.runtime.ready
+      ? options.runtime.selectedSource
+      : availableSources.length === 1
+        ? availableSources[0]!.value
+      : null;
+  const transcriptionOptions = buildTranscriptionOptions(
+    selectedSource,
+    options.transcriberEnabled,
+    options.contexts,
+  );
+
+  return {
+    sourcePreference: options.preferences.sourcePreference,
+    transcriptionProviderPreference: options.preferences.transcriptionProviderPreference,
+    selectedSource,
+    sourceOptions,
+    selectedTranscriptionProvider: options.runtime.transcription?.provider ?? null,
+    transcriptionOptions,
+  };
+}
+
+export function resolvePlatformTranscriptionRuntime(
+  options?: PlatformRuntimeOptions,
+): ResolvedTranscriptionRuntime {
+  const provider = options?.provider ?? getPlatformDefaultTranscriptionProvider();
+  if (provider === "dashscope") {
+    return buildDashScopeRuntime(optionalEnv("DASHSCOPE_API_KEY"), "system");
+  }
+  return buildDeepgramRuntime(optionalEnv("DEEPGRAM_API_KEY"), "system");
+}
+
+function buildPlatformTranscriptionState(): TranscriptionRuntimeState {
+  const runtimes = new Map(
+    getSupportedTranscriptionProviders().map((provider) => [
+      provider,
+      resolvePlatformTranscriptionRuntime({ provider }),
+    ]),
+  );
+
+  return buildTranscriptionState({
+    source: "system",
+    keySource: "system",
+    defaultProvider: getPlatformDefaultTranscriptionProvider(),
+    runtimes,
+  });
+}
+
+async function buildUserTranscriptionState(
+  ownerUserId: string | null | undefined,
+): Promise<TranscriptionRuntimeState> {
+  if (!ownerUserId) {
+    return buildTranscriptionState({
+      source: "user",
+      keySource: "user",
+      defaultProvider: null,
+      runtimes: new Map(),
+    });
+  }
+
+  const [defaultProvider, credentialMap] = await Promise.all([
+    getUserDefaultTranscriptionProvider(ownerUserId),
+    getStoredUserTranscriptionProviderCredentials(ownerUserId),
+  ]);
+  const runtimes = new Map(
+    getSupportedTranscriptionProviders().map((provider) => [
+      provider,
+      buildRuntimeFromProvider(provider, credentialMap.get(provider)?.apiKey ?? null, "user"),
+    ]),
+  );
+
+  return buildTranscriptionState({
+    source: "user",
+    keySource: "user",
+    defaultProvider,
+    runtimes,
+  });
+}
+
+export async function resolveUserDefaultTranscriptionRuntimeForOwner(
+  ownerUserId: string | null | undefined,
+): Promise<ResolvedTranscriptionRuntime | null> {
+  const state = await buildUserTranscriptionState(ownerUserId);
+  return resolveTranscriptionRuntimeFromState(state, true, null);
+}
+
 export async function resolveRoomVoiceRuntimeForOwner(
   ownerUserId: string | null | undefined,
+  preferences?: Partial<RoomVoiceRuntimePreferences>,
 ): Promise<RoomVoiceRuntime> {
   const transcriberEnabled = isTranscriberEnabled();
   const mode = getUserProviderKeysMode();
+  const normalizedPreferences: RoomVoiceRuntimePreferences = {
+    sourcePreference: normalizeSourcePreferenceForMode(preferences?.sourcePreference, mode),
+    transcriptionProviderPreference: preferences?.transcriptionProviderPreference ?? null,
+  };
+
+  const [userLivekit, userTranscription, systemQuotaGate] = await Promise.all([
+    resolveUserOwnedLivekitCredentials(ownerUserId),
+    buildUserTranscriptionState(ownerUserId),
+    ownerUserId && transcriberEnabled
+      ? getPlatformTranscriptionUsageGate(ownerUserId)
+      : Promise.resolve({ exceeded: false } as const),
+  ]);
+
+  const contexts = {
+    user: {
+      livekit: userLivekit,
+      transcription: userTranscription,
+    },
+    system: {
+      livekit: resolvePlatformLivekitCredentials(),
+      transcription: buildPlatformTranscriptionState(),
+    },
+  } satisfies Record<RoomVoiceSourcePreference, VoiceSourceContext>;
+
+  const userRuntime = buildCandidateFromContext(
+    contexts.user,
+    transcriberEnabled,
+    normalizedPreferences.transcriptionProviderPreference,
+    "user",
+  );
+  const systemRuntime = applyPlatformUsageGate(
+    buildCandidateFromContext(
+      contexts.system,
+      transcriberEnabled,
+      normalizedPreferences.transcriptionProviderPreference,
+      "system",
+    ),
+    systemQuotaGate.exceeded ? getPlatformTranscriptionQuotaExceededMessage() : null,
+  );
+
+  const userSourceAvailable = isSourceUsable(contexts.user, transcriberEnabled);
+  const systemSourceAvailable = isSourceUsable(
+    contexts.system,
+    transcriberEnabled,
+    systemQuotaGate.exceeded,
+  );
 
   if (mode === "false") {
-    const platformRuntime = await resolvePlatformVoiceRuntimeCandidate(ownerUserId, transcriberEnabled);
-    return {
-      livekit: platformRuntime.livekit,
-      transcription: platformRuntime.transcription,
+    const runtime = {
+      livekit: systemRuntime.livekit,
+      transcription: systemRuntime.transcription,
       transcriberEnabled,
-      source: platformRuntime.source,
-      ready: platformRuntime.ready,
-      error: platformRuntime.ready
+      source: systemRuntime.source,
+      ready: systemRuntime.ready,
+      error: systemRuntime.ready
         ? null
-        : (platformRuntime.error ?? buildVoiceRuntimeError(mode, transcriberEnabled)),
-    };
+        : (systemRuntime.error ?? buildVoiceRuntimeError(mode, transcriberEnabled)),
+      selection: buildSelectionState({
+        contexts,
+        mode,
+        preferences: normalizedPreferences,
+        runtime: systemRuntime,
+        transcriberEnabled,
+        systemSourceAvailable,
+        userSourceAvailable,
+      }),
+    } satisfies RoomVoiceRuntime;
+    return runtime;
   }
 
-  const userRuntime = await resolveUserVoiceRuntimeCandidate(ownerUserId, transcriberEnabled);
-
-  if (mode === "full") {
+  if (mode === "full" || normalizedPreferences.sourcePreference === "user") {
     return {
       livekit: userRuntime.livekit,
       transcription: userRuntime.transcription,
       transcriberEnabled,
       source: userRuntime.source,
       ready: userRuntime.ready,
-      error: userRuntime.ready
-        ? null
-        : (userRuntime.error ?? buildVoiceRuntimeError(mode, transcriberEnabled)),
+      error: userRuntime.ready ? null : (userRuntime.error ?? buildVoiceRuntimeError(mode, transcriberEnabled)),
+      selection: buildSelectionState({
+        contexts,
+        mode,
+        preferences: normalizedPreferences,
+        runtime: userRuntime,
+        transcriberEnabled,
+        systemSourceAvailable,
+        userSourceAvailable,
+      }),
+    };
+  }
+
+  if (normalizedPreferences.sourcePreference === "system") {
+    return {
+      livekit: systemRuntime.livekit,
+      transcription: systemRuntime.transcription,
+      transcriberEnabled,
+      source: systemRuntime.source,
+      ready: systemRuntime.ready,
+      error:
+        systemRuntime.ready
+          ? null
+          : (systemRuntime.error ?? buildVoiceRuntimeError(mode, transcriberEnabled)),
+      selection: buildSelectionState({
+        contexts,
+        mode,
+        preferences: normalizedPreferences,
+        runtime: systemRuntime,
+        transcriberEnabled,
+        systemSourceAvailable,
+        userSourceAvailable,
+      }),
     };
   }
 
@@ -334,38 +669,55 @@ export async function resolveRoomVoiceRuntimeForOwner(
       source: userRuntime.source,
       ready: true,
       error: null,
+      selection: buildSelectionState({
+        contexts,
+        mode,
+        preferences: normalizedPreferences,
+        runtime: userRuntime,
+        transcriberEnabled,
+        systemSourceAvailable,
+        userSourceAvailable,
+      }),
     };
   }
 
-  const platformRuntime = await resolvePlatformVoiceRuntimeCandidate(ownerUserId, transcriberEnabled);
-  if (platformRuntime.ready) {
+  if (systemRuntime.ready) {
     console.info("Room voice runtime fell back to platform bundle", {
       ownerUserId,
       transcriberEnabled,
       userLivekitConfigured: userRuntime.livekit.configured,
-      userTranscriptionConfigured: userRuntime.transcription?.configured ?? !transcriberEnabled,
-      platformTranscriptionProvider: platformRuntime.transcription?.provider ?? null,
+      userTranscriptionConfigured: Boolean(userRuntime.transcription?.configured),
+      platformTranscriptionProvider: systemRuntime.transcription?.provider ?? null,
     });
 
     return {
-      livekit: platformRuntime.livekit,
-      transcription: platformRuntime.transcription,
+      livekit: systemRuntime.livekit,
+      transcription: systemRuntime.transcription,
       transcriberEnabled,
-      source: platformRuntime.source,
+      source: systemRuntime.source,
       ready: true,
       error: null,
+      selection: buildSelectionState({
+        contexts,
+        mode,
+        preferences: normalizedPreferences,
+        runtime: systemRuntime,
+        transcriberEnabled,
+        systemSourceAvailable,
+        userSourceAvailable,
+      }),
     };
   }
 
-  const unavailableRuntime = pickPreferredUnavailableVoiceRuntime(userRuntime, platformRuntime);
+  const unavailableRuntime = pickPreferredUnavailableVoiceRuntime(userRuntime, systemRuntime);
   console.warn("Room voice runtime is unavailable", {
     ownerUserId,
     mode,
     transcriberEnabled,
     userLivekitConfigured: userRuntime.livekit.configured,
-    userTranscriptionConfigured: userRuntime.transcription?.configured ?? !transcriberEnabled,
-    platformLivekitConfigured: platformRuntime.livekit.configured,
-    platformTranscriptionConfigured: platformRuntime.transcription?.configured ?? !transcriberEnabled,
+    userTranscriptionConfigured: Boolean(userRuntime.transcription?.configured),
+    platformLivekitConfigured: systemRuntime.livekit.configured,
+    platformTranscriptionConfigured: Boolean(systemRuntime.transcription?.configured),
   });
 
   return {
@@ -376,8 +728,17 @@ export async function resolveRoomVoiceRuntimeForOwner(
     ready: false,
     error:
       unavailableRuntime.error ??
-      platformRuntime.error ??
+      systemRuntime.error ??
       buildVoiceRuntimeError(mode, transcriberEnabled),
+    selection: buildSelectionState({
+      contexts,
+      mode,
+      preferences: normalizedPreferences,
+      runtime: unavailableRuntime,
+      transcriberEnabled,
+      systemSourceAvailable,
+      userSourceAvailable,
+    }),
   };
 }
 
@@ -389,4 +750,62 @@ export async function resolveLivekitTransportForRealtimeOrThrow(
     throw new Error("LiveKit credentials are unavailable");
   }
   return credentials;
+}
+
+export async function getPreferredTranscriptionProviderForRoomVoiceSource(
+  ownerUserId: string | null | undefined,
+  source: RoomVoiceSourcePreference,
+): Promise<TranscriptionProviderName | null> {
+  const state =
+    source === "user"
+      ? await buildUserTranscriptionState(ownerUserId)
+      : buildPlatformTranscriptionState();
+
+  return (
+    resolveConfiguredTranscriptionProvider(state, null, {
+      fallbackToAvailable: true,
+    }) ?? null
+  );
+}
+
+export async function isRoomVoiceSourceAvailableForOwner(
+  ownerUserId: string | null | undefined,
+  source: RoomVoiceSourcePreference,
+): Promise<boolean> {
+  const transcriberEnabled = isTranscriberEnabled();
+  const [userLivekit, userTranscription, systemQuotaGate] = await Promise.all([
+    resolveUserOwnedLivekitCredentials(ownerUserId),
+    buildUserTranscriptionState(ownerUserId),
+    ownerUserId && transcriberEnabled
+      ? getPlatformTranscriptionUsageGate(ownerUserId)
+      : Promise.resolve({ exceeded: false } as const),
+  ]);
+  const contexts = {
+    user: {
+      livekit: userLivekit,
+      transcription: userTranscription,
+    },
+    system: {
+      livekit: resolvePlatformLivekitCredentials(),
+      transcription: buildPlatformTranscriptionState(),
+    },
+  } satisfies Record<RoomVoiceSourcePreference, VoiceSourceContext>;
+
+  if (source === "user") {
+    return isSourceUsable(contexts.user, transcriberEnabled);
+  }
+  return isSourceUsable(contexts.system, transcriberEnabled, systemQuotaGate.exceeded);
+}
+
+export async function isTranscriptionProviderAvailableForRoomVoiceSource(
+  ownerUserId: string | null | undefined,
+  source: RoomVoiceSourcePreference,
+  provider: TranscriptionProviderName,
+): Promise<boolean> {
+  const state =
+    source === "user"
+      ? await buildUserTranscriptionState(ownerUserId)
+      : buildPlatformTranscriptionState();
+
+  return Boolean(state.runtimes.get(provider)?.configured);
 }

@@ -1489,10 +1489,19 @@ a:focus-visible {
 }
 
 .provider-chip-value {
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.2;
   color: var(--foreground);
+}
+
+.provider-chip-value-voice {
+  letter-spacing: -0.01em;
 }
 
 .provider-chip-switch {
@@ -1852,6 +1861,10 @@ a:focus-visible {
   pointer-events: auto;
 }
 
+.provider-popover-form {
+  width: 300px;
+}
+
 .provider-popover::after {
   content: "";
   position: absolute;
@@ -1884,6 +1897,10 @@ a:focus-visible {
   margin-bottom: 0;
 }
 
+.provider-popover-row-control {
+  align-items: center;
+}
+
 .provider-popover-label {
   font-size: 0.85rem;
   color: var(--muted);
@@ -1895,6 +1912,183 @@ a:focus-visible {
   font-weight: 600;
   color: var(--foreground);
   text-align: right;
+}
+
+.provider-popover-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  width: fit-content;
+  min-width: 0;
+  max-width: 184px;
+  min-height: 34px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, var(--line));
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 92%, white 8%) 0%, var(--surface) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.provider-popover-control::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid color-mix(in srgb, var(--foreground) 52%, transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--foreground) 52%, transparent);
+  transform: translateY(-62%) rotate(45deg);
+  pointer-events: none;
+}
+
+.provider-popover-control.active::after {
+  transform: translateY(-28%) rotate(-135deg);
+}
+
+.provider-popover-control:hover {
+  border-color: color-mix(in srgb, var(--foreground) 16%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, white 4%) 0%, color-mix(in srgb, var(--surface) 88%, white 12%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+.provider-popover-control:focus-within {
+  border-color: color-mix(in srgb, var(--foreground) 26%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 98%, white 2%) 0%, color-mix(in srgb, var(--surface) 82%, white 18%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 3px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.provider-popover-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.81rem;
+  font-weight: 650;
+  line-height: 1.2;
+  padding: 8px 28px 8px 12px;
+  cursor: pointer;
+  text-align: right;
+}
+
+.provider-popover-trigger:focus {
+  outline: none;
+}
+
+.provider-popover-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.provider-popover-trigger-value {
+  display: block;
+  max-width: 132px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-popover-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -2px;
+  width: max-content;
+  min-width: max(calc(100% + 8px), 132px);
+  max-width: 220px;
+  z-index: 4;
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 96%, white 4%);
+  box-shadow:
+    0 14px 30px -20px rgba(15, 23, 42, 0.3),
+    0 6px 14px -10px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+}
+
+.provider-popover-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-popover-menu-item {
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 88%, var(--muted));
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 560;
+  line-height: 1.2;
+  text-align: right;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+
+.provider-popover-menu-item:hover {
+  background: color-mix(in srgb, var(--surface) 78%, white 22%);
+  color: var(--foreground);
+}
+
+.provider-popover-menu-item.active {
+  background: color-mix(in srgb, var(--surface) 88%, white 12%);
+  color: var(--foreground);
+  font-weight: 620;
+}
+
+.provider-popover-menu-item:disabled {
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+  cursor: not-allowed;
+}
+
+.provider-popover-menu-item:disabled:hover {
+  background: transparent;
+}
+
+.provider-popover-menu-item-label {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-popover-hint {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 /* Sidebar Components */

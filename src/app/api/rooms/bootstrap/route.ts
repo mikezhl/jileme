@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/runtime";
 import { requireApiUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import {
   createOwnedRoom,
   ensureRoomParticipant,
@@ -54,7 +55,10 @@ export async function POST(request: Request) {
       await ensureRoomParticipant(room.id, user.id);
     }
 
-    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(room.createdById);
+    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
+      room.createdById,
+      getRoomVoiceRuntimePreferences(room),
+    );
 
     await prisma.roomParticipant.updateMany({
       where: {
@@ -89,6 +93,7 @@ export async function POST(request: Request) {
               ready: voiceRuntime.transcription.configured,
             }
           : null,
+        selection: voiceRuntime.selection,
         error: voiceRuntime.error,
       },
     });

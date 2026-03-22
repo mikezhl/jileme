@@ -2,6 +2,7 @@ import { RoomStatus } from "@prisma/client";
 
 import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
 import { buildRoomProviderModules } from "@/lib/provider-modules";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/runtime";
 import { prisma } from "@/lib/prisma";
 
@@ -53,7 +54,10 @@ export async function buildRoomRuntimeInfo(roomId: string, userId: string) {
       })
     : null;
   const [voiceRuntime, llmRuntime] = await Promise.all([
-    resolveRoomVoiceRuntimeForOwner(room.createdById),
+    resolveRoomVoiceRuntimeForOwner(
+      room.createdById,
+      getRoomVoiceRuntimePreferences(room),
+    ),
     resolveConversationLlmRuntimeForOwner(room.createdById),
   ]);
   const isCreator = room.createdById === userId;

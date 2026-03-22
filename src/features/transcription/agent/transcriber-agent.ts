@@ -39,6 +39,7 @@ import {
 } from "@/lib/livekit-chat-relay";
 import { prisma as sharedPrisma } from "@/lib/prisma";
 import { type KeySource } from "@/lib/provider-sources";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { recordVoiceUsageForOwner } from "@/lib/usage-stats";
 
 const prisma = sharedPrisma instanceof PrismaClient ? sharedPrisma : new PrismaClient();
@@ -686,10 +687,15 @@ async function resolveRoomVoiceRuntime(roomId: string): Promise<RoomVoiceRuntime
     where: { roomId },
     select: {
       createdById: true,
+      voiceSourcePreference: true,
+      transcriptionProviderPreference: true,
     },
   });
 
-  return resolveRoomVoiceRuntimeForOwner(room?.createdById);
+  return resolveRoomVoiceRuntimeForOwner(
+    room?.createdById,
+    room ? getRoomVoiceRuntimePreferences(room) : undefined,
+  );
 }
 
 async function resolveRoomOwnerUserId(roomId: string): Promise<string | null> {

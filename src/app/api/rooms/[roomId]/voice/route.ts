@@ -4,6 +4,7 @@ import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/r
 import { appendTranscriberRuntimeLog } from "@/features/transcription/runtime/runtime-log";
 import { releaseTranscriberDispatchIfIdle } from "@/features/transcription/service/livekit-dispatch";
 import { requireApiUser } from "@/lib/auth-guard";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
 import { normalizeRoomId } from "@/lib/room-utils";
 
@@ -39,7 +40,10 @@ export async function POST(request: Request, context: RouteContext) {
       userId: user.id,
       participantIdentity: body.participantIdentity?.trim() || null,
     });
-    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(room.createdById);
+    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
+      room.createdById,
+      getRoomVoiceRuntimePreferences(room),
+    );
 
     if (!voiceRuntime.livekit.livekitUrl || !voiceRuntime.livekit.livekitApiKey || !voiceRuntime.livekit.livekitApiSecret) {
       return NextResponse.json({ error: voiceRuntime.error ?? "LiveKit credentials are unavailable" }, { status: 400 });

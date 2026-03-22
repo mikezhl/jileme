@@ -2,6 +2,8 @@ import { getConversationAnalysisPromptProfiles } from "@/features/analysis/llm/c
 import type { RoomVoiceRuntime } from "@/features/transcription/core/runtime";
 import type { ResolvedConversationLlmRuntime, RuntimeSource } from "./llm-provider-keys";
 import type { KeySource } from "./provider-sources";
+import type { RoomVoiceSourcePreference } from "./room-voice-preferences";
+import type { TranscriptionProviderName } from "@/features/transcription/core/providers";
 
 export type ProviderOwnerKind = "platform" | "user" | "builtin" | "unavailable";
 
@@ -15,6 +17,20 @@ export type VoiceProviderModule = {
   ready: boolean;
   error: string | null;
   transcriberEnabled: boolean;
+  selection: {
+    sourcePreference: RoomVoiceSourcePreference | null;
+    transcriptionProviderPreference: TranscriptionProviderName | null;
+    selectedSource: RoomVoiceSourcePreference | null;
+    sourceOptions: Array<{
+      value: RoomVoiceSourcePreference;
+      available: boolean;
+    }>;
+    selectedTranscriptionProvider: TranscriptionProviderName | null;
+    transcriptionOptions: Array<{
+      value: TranscriptionProviderName;
+      available: boolean;
+    }>;
+  };
   transport: {
     provider: "livekit";
     source: KeySource;
@@ -77,6 +93,31 @@ function resolveProviderOwnerFromSource(
   };
 }
 
+export function buildRoomVoiceProviderModule(
+  voiceRuntime: RoomVoiceRuntime,
+  ownerUsername: string | null,
+): VoiceProviderModule {
+  return {
+    providedBy: resolveProviderOwnerFromSource(voiceRuntime.source, ownerUsername),
+    ready: voiceRuntime.ready,
+    error: voiceRuntime.error,
+    transcriberEnabled: voiceRuntime.transcriberEnabled,
+    selection: voiceRuntime.selection,
+    transport: {
+      provider: "livekit",
+      source: voiceRuntime.livekit.source,
+      credentialMask: voiceRuntime.livekit.livekitApiKeyMask,
+      ready: voiceRuntime.livekit.configured,
+    },
+    transcription: {
+      provider: voiceRuntime.transcription?.provider ?? null,
+      source: voiceRuntime.transcription?.source ?? "unavailable",
+      credentialMask: voiceRuntime.transcription?.credentialMask ?? null,
+      ready: voiceRuntime.transcription?.configured ?? !voiceRuntime.transcriberEnabled,
+    },
+  };
+}
+
 export function buildRoomProviderModules(
   voiceRuntime: RoomVoiceRuntime,
   llmRuntime: ResolvedConversationLlmRuntime,
@@ -85,24 +126,7 @@ export function buildRoomProviderModules(
   const profiles = getConversationAnalysisPromptProfiles();
 
   return {
-    voice: {
-      providedBy: resolveProviderOwnerFromSource(voiceRuntime.source, ownerUsername),
-      ready: voiceRuntime.ready,
-      error: voiceRuntime.error,
-      transcriberEnabled: voiceRuntime.transcriberEnabled,
-      transport: {
-        provider: "livekit",
-        source: voiceRuntime.livekit.source,
-        credentialMask: voiceRuntime.livekit.livekitApiKeyMask,
-        ready: voiceRuntime.livekit.configured,
-      },
-      transcription: {
-        provider: voiceRuntime.transcription?.provider ?? null,
-        source: voiceRuntime.transcription?.source ?? "unavailable",
-        credentialMask: voiceRuntime.transcription?.credentialMask ?? null,
-        ready: voiceRuntime.transcription?.configured ?? !voiceRuntime.transcriberEnabled,
-      },
-    },
+    voice: buildRoomVoiceProviderModule(voiceRuntime, ownerUsername),
     analysis: {
       providedBy: resolveProviderOwnerFromSource(llmRuntime.source, ownerUsername),
       provider: llmRuntime.provider,

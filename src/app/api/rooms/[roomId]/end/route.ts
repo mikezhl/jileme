@@ -6,6 +6,7 @@ import { executeFinalSummaryForRoomRef } from "@/features/analysis/service/analy
 import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/runtime";
 import { requireApiUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { normalizeRoomId } from "@/lib/room-utils";
 
 type RouteContext = {
@@ -24,13 +25,23 @@ function isTwirpCode(error: unknown, code: string) {
   );
 }
 
-async function disconnectActiveVoiceRoom(roomId: string, ownerUserId: string | null) {
-  const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(ownerUserId);
+async function disconnectActiveVoiceRoom(
+  roomId: string,
+  roomPreferences: {
+    createdById: string | null;
+    voiceSourcePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["voiceSourcePreference"];
+    transcriptionProviderPreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionProviderPreference"];
+  },
+) {
+  const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
+    roomPreferences.createdById,
+    getRoomVoiceRuntimePreferences(roomPreferences),
+  );
   const credentials = voiceRuntime.livekit;
   if (!credentials.livekitUrl || !credentials.livekitApiKey || !credentials.livekitApiSecret) {
     console.warn("Skip LiveKit room disconnect due to missing credentials", {
       roomId,
-      ownerUserId,
+      ownerUserId: roomPreferences.createdById,
     });
     return;
   }
@@ -72,6 +83,8 @@ export async function POST(_request: Request, context: RouteContext) {
         roomId: true,
         status: true,
         createdById: true,
+        voiceSourcePreference: true,
+        transcriptionProviderPreference: true,
         endedAt: true,
       },
     });
@@ -106,6 +119,8 @@ export async function POST(_request: Request, context: RouteContext) {
         status: true,
         endedAt: true,
         createdById: true,
+        voiceSourcePreference: true,
+        transcriptionProviderPreference: true,
       },
     });
 
@@ -125,7 +140,7 @@ export async function POST(_request: Request, context: RouteContext) {
     }
 
     try {
-      await disconnectActiveVoiceRoom(updated.roomId, updated.createdById);
+      await disconnectActiveVoiceRoom(updated.roomId, updated);
     } catch (disconnectError) {
       console.error("Failed to disconnect active LiveKit room on room end", {
         roomId: updated.roomId,

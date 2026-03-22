@@ -7,6 +7,8 @@ import {
   LIVEKIT_TRANSCRIPTION_STATUS_TOPIC,
 } from "@/lib/livekit-transcription-status-event";
 import { type ChatMessage } from "@/lib/chat-types";
+import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
+import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
 import { type UiLanguage } from "@/lib/ui-language";
 
@@ -45,6 +47,25 @@ type UseRoomSessionArgs = {
   t: RoomPageTranslate;
 };
 
+function getEffectiveVoiceSource(
+  voiceProvider: RoomMetaState["providers"]["voice"],
+): RoomVoiceSourcePreference | null {
+  const preferredSource =
+    voiceProvider.selection.selectedSource ?? voiceProvider.selection.sourcePreference;
+  if (preferredSource) {
+    return preferredSource;
+  }
+
+  const availableSources = voiceProvider.selection.sourceOptions.filter((option) => option.available);
+  if (availableSources.length === 1) {
+    return availableSources[0]!.value;
+  }
+
+  return voiceProvider.transport.source === "user" || voiceProvider.transport.source === "system"
+    ? voiceProvider.transport.source
+    : null;
+}
+
 export function useRoomSession({
   initialRoomName,
   language,
@@ -62,7 +83,7 @@ export function useRoomSession({
   const micEnabledRef = useRef(false);
   const participantIdentityRef = useRef("");
   const speakerModeRef = useRef<RoomSpeakerMode>("self");
-  const pendingVoiceRestartAfterSpeakerSwitchRef = useRef(false);
+  const pendingVoiceRestartAfterReconnectRef = useRef(false);
   const voiceCallStartingRef = useRef(false);
   const attachedTranscriptionParticipantsRef = useRef(new Map<string, string | null>());
   const transcriptionAttachmentWaiterRef = useRef<{
@@ -85,6 +106,7 @@ export function useRoomSession({
   const [endingRoom, setEndingRoom] = useState(false);
   const [publicTogglePending, setPublicTogglePending] = useState(false);
   const [analysisTogglePending, setAnalysisTogglePending] = useState(false);
+  const [voiceSettingsPending, setVoiceSettingsPending] = useState(false);
   const [speakerMode, setSpeakerMode] = useState<RoomSpeakerMode>("self");
   const [speakerSwitchPending, setSpeakerSwitchPending] = useState(false);
   const [transcriptionState, setTranscriptionState] = useState<TranscriptionState>("idle");
@@ -638,7 +660,7 @@ export function useRoomSession({
       void fetchMessages(latestMessageCreatedAtRef.current).catch(() => undefined);
     } catch (error) {
       room?.disconnect();
-      pendingVoiceRestartAfterSpeakerSwitchRef.current = false;
+      pendingVoiceRestartAfterReconnectRef.current = false;
       setSpeakerSwitchPending(false);
       setRoomError(error instanceof Error ? error.message : t("连接房间失败", "Failed to connect room"));
       disconnectRoom();
@@ -849,6 +871,121 @@ export function useRoomSession({
     t,
   ]);
 
+  const updateVoiceSettings = useCallback(
+    async (updates: {
+      source?: RoomVoiceSourcePreference;
+      transcriptionProvider?: TranscriptionProviderName;
+    }) => {
+      if (!roomMeta.isCreator || voiceSettingsPending || roomMeta.status === "ENDED") {
+        return;
+      }
+
+      setVoiceSettingsPending(true);
+      setRoomError("");
+
+      try {
+        const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/voice-settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        });
+        const payload = (await response.json()) as {
+          providers?: {
+            voice: RoomMetaState["providers"]["voice"];
+          };
+          error?: string;
+        };
+        if (!response.ok || !payload.providers?.voice) {
+          throw new Error(payload.error ?? t("更新语音设置失败", "Failed to update voice settings"));
+        }
+
+        const nextVoiceProvider = payload.providers.voice;
+        const runtimeChanged =
+          nextVoiceProvider.selection.selectedTranscriptionProvider !==
+            roomMeta.providers.voice.selection.selectedTranscriptionProvider ||
+          nextVoiceProvider.transcriberEnabled !== roomMeta.providers.voice.transcriberEnabled ||
+          nextVoiceProvider.transport.source !== roomMeta.providers.voice.transport.source;
+        const sourceChanged =
+          typeof updates.source === "string" &&
+          getEffectiveVoiceSource(nextVoiceProvider) !==
+            getEffectiveVoiceSource(roomMeta.providers.voice);
+        voiceProviderRef.current = nextVoiceProvider;
+        setRoomMeta((current) => ({
+          ...current,
+          providers: {
+            ...current.providers,
+            voice: nextVoiceProvider,
+          },
+        }));
+        void fetchRoomMeta().catch(() => undefined);
+
+        const activeRoom = roomRef.current;
+        const shouldReconnectRoom =
+          sourceChanged && connectionState === "connected" && Boolean(activeRoom);
+        const shouldResumeVoiceAfterReconnect = shouldReconnectRoom && micEnabledRef.current;
+        if (shouldReconnectRoom && activeRoom) {
+          pendingVoiceRestartAfterReconnectRef.current = shouldResumeVoiceAfterReconnect;
+          if (shouldResumeVoiceAfterReconnect) {
+            voiceCallStartingRef.current = false;
+            setVoiceCallStarting(false);
+            resetTranscriptionAttachmentState();
+            await disableLocalMicrophone(activeRoom);
+            await releaseVoiceRuntimeIfIdle().catch(() => undefined);
+          }
+          setHasAutoConnectAttempted(false);
+          disconnectRoom();
+          return;
+        }
+
+        const shouldRestartVoice =
+          (sourceChanged || runtimeChanged) &&
+          connectionState === "connected" &&
+          micEnabledRef.current &&
+          Boolean(activeRoom);
+        if (!shouldRestartVoice || !activeRoom) {
+          if (roomRef.current) {
+            syncVoiceSessionState(roomRef.current);
+          } else {
+            setTranscriptionState(getIdleTranscriptionState(nextVoiceProvider));
+          }
+          return;
+        }
+
+        voiceCallStartingRef.current = false;
+        setVoiceCallStarting(false);
+        resetTranscriptionAttachmentState();
+        await disableLocalMicrophone(activeRoom);
+        if (roomRef.current === activeRoom) {
+          syncVoiceSessionState(activeRoom);
+          armConnectionIdleTimer();
+        }
+        await releaseVoiceRuntimeIfIdle().catch(() => undefined);
+        await startVoiceCall();
+      } catch (error) {
+        setRoomError(error instanceof Error ? error.message : t("更新语音设置失败", "Failed to update voice settings"));
+      } finally {
+        setVoiceSettingsPending(false);
+      }
+    },
+    [
+      armConnectionIdleTimer,
+      connectionState,
+      disableLocalMicrophone,
+      disconnectRoom,
+      fetchRoomMeta,
+      releaseVoiceRuntimeIfIdle,
+      resetTranscriptionAttachmentState,
+      roomId,
+      roomMeta.isCreator,
+      roomMeta.providers.voice,
+      roomMeta.status,
+      startVoiceCall,
+      syncVoiceSessionState,
+      t,
+      voiceSettingsPending,
+    ],
+  );
+
   const switchSpeakerMode = useCallback(async () => {
     if (
       !roomMeta.currentUserCanParticipate ||
@@ -871,7 +1008,7 @@ export function useRoomSession({
     }
 
     setSpeakerSwitchPending(true);
-    pendingVoiceRestartAfterSpeakerSwitchRef.current = shouldResumeVoice;
+    pendingVoiceRestartAfterReconnectRef.current = shouldResumeVoice;
 
     if (shouldResumeVoice && roomRef.current) {
       try {
@@ -1126,18 +1263,22 @@ export function useRoomSession({
   }, [connectionState, disconnectRoom, roomMeta.status]);
 
   useEffect(() => {
-    if (!speakerSwitchPending || connectionState !== "connected") {
+    if (connectionState !== "connected") {
       return;
     }
 
-    if (!pendingVoiceRestartAfterSpeakerSwitchRef.current) {
-      setSpeakerSwitchPending(false);
+    if (!pendingVoiceRestartAfterReconnectRef.current) {
+      if (speakerSwitchPending) {
+        setSpeakerSwitchPending(false);
+      }
       return;
     }
 
-    pendingVoiceRestartAfterSpeakerSwitchRef.current = false;
+    pendingVoiceRestartAfterReconnectRef.current = false;
     void startVoiceCall().finally(() => {
-      setSpeakerSwitchPending(false);
+      if (speakerSwitchPending) {
+        setSpeakerSwitchPending(false);
+      }
     });
   }, [connectionState, speakerSwitchPending, startVoiceCall]);
 
@@ -1151,7 +1292,7 @@ export function useRoomSession({
       return;
     }
 
-    pendingVoiceRestartAfterSpeakerSwitchRef.current = false;
+    pendingVoiceRestartAfterReconnectRef.current = false;
     setSpeakerSwitchPending(false);
   }, [
     roomMeta.isCreator,
@@ -1313,6 +1454,8 @@ export function useRoomSession({
     togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
+    updateVoiceSettings,
     voiceCallStarting,
+    voiceSettingsPending,
   };
 }

@@ -61,7 +61,9 @@ export default function RoomPageClient({
     togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
+    updateVoiceSettings,
     voiceCallStarting,
+    voiceSettingsPending,
   } = useRoomSession({
     initialRoomName,
     language,
@@ -230,6 +232,12 @@ export default function RoomPageClient({
       onTogglePublicRoom={() => {
         void togglePublicRoom();
       }}
+      onUpdateVoiceSource={(source) => {
+        void updateVoiceSettings({ source });
+      }}
+      onUpdateVoiceTranscriptionProvider={(provider) => {
+        void updateVoiceSettings({ transcriptionProvider: provider });
+      }}
       onToggleRawMessage={setRawMessageId}
       onToggleRealtimeAnalysis={() => {
         void toggleRealtimeAnalysis();
@@ -263,6 +271,7 @@ export default function RoomPageClient({
       userId={userId}
       username={username}
       voiceCallStarting={voiceCallStarting}
+      voiceSettingsPending={voiceSettingsPending}
     />
   );
 }

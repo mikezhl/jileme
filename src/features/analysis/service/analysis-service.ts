@@ -11,6 +11,7 @@ import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
 import { toChatMessage } from "@/lib/messages";
 import { getRoomNameFromAnalysisPayload } from "@/lib/room-name";
 import { prisma } from "@/lib/prisma";
+import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { recordLlmUsageForOwner } from "@/lib/usage-stats";
 import { isRealtimeAnalysisEnabledForRoom } from "./analysis-control";
 import { compactConversationForAnalysis } from "./dialogue-compact";
@@ -52,10 +53,17 @@ function getHistoryTurnLimit() {
 
 async function relayAiMessage(
   roomId: string,
-  ownerUserId: string | null,
+  roomPreferences: {
+    createdById: string | null;
+    voiceSourcePreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["voiceSourcePreference"];
+    transcriptionProviderPreference: Parameters<typeof getRoomVoiceRuntimePreferences>[0]["transcriptionProviderPreference"];
+  },
   message: ReturnType<typeof toChatMessage>,
 ) {
-  const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(ownerUserId);
+  const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
+    roomPreferences.createdById,
+    getRoomVoiceRuntimePreferences(roomPreferences),
+  );
   const credentials = voiceRuntime.livekit;
   if (!credentials.livekitUrl || !credentials.livekitApiKey || !credentials.livekitApiSecret) {
     return;
@@ -102,6 +110,8 @@ export async function executeRealtimeAnalysisForRoomRef(roomRefId: string): Prom
       status: true,
       analysisEnabled: true,
       createdById: true,
+      voiceSourcePreference: true,
+      transcriptionProviderPreference: true,
     },
   });
   if (!room) {
@@ -215,7 +225,7 @@ export async function executeRealtimeAnalysisForRoomRef(roomRefId: string): Prom
   }
 
   try {
-    await relayAiMessage(room.roomId, room.createdById, toChatMessage(persisted));
+    await relayAiMessage(room.roomId, room, toChatMessage(persisted));
   } catch (error) {
     if (isRelayRoomMissingError(error)) {
       console.info("Skipped realtime AI analysis relay because LiveKit room is not active", {
@@ -247,6 +257,8 @@ export async function executeFinalSummaryForRoomRef(roomRefId: string): Promise<
       roomId: true,
       name: true,
       createdById: true,
+      voiceSourcePreference: true,
+      transcriptionProviderPreference: true,
     },
   });
   if (!room) {
@@ -334,7 +346,7 @@ export async function executeFinalSummaryForRoomRef(roomRefId: string): Promise<
   }
 
   try {
-    await relayAiMessage(room.roomId, room.createdById, toChatMessage(persisted));
+    await relayAiMessage(room.roomId, room, toChatMessage(persisted));
   } catch (error) {
     if (isRelayRoomMissingError(error)) {
       console.info("Skipped final AI summary relay because LiveKit room is not active", {

@@ -5,8 +5,10 @@ import {
   type RealtimeAnalysisRoundScore,
   type RealtimeAnalysisSide,
 } from "@/features/analysis/llm/realtime-analysis";
+import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
 import { type ChatMessage } from "@/lib/chat-types";
 import { getRoomNameFromAnalysisContent } from "@/lib/room-name";
+import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { toDateLocale, type UiLanguage } from "@/lib/ui-language";
 
 export type ProviderOwner = {
@@ -19,6 +21,20 @@ export type VoiceProviderState = {
   ready: boolean;
   error: string | null;
   transcriberEnabled: boolean;
+  selection: {
+    sourcePreference: RoomVoiceSourcePreference | null;
+    transcriptionProviderPreference: TranscriptionProviderName | null;
+    selectedSource: RoomVoiceSourcePreference | null;
+    sourceOptions: Array<{
+      value: RoomVoiceSourcePreference;
+      available: boolean;
+    }>;
+    selectedTranscriptionProvider: TranscriptionProviderName | null;
+    transcriptionOptions: Array<{
+      value: TranscriptionProviderName;
+      available: boolean;
+    }>;
+  };
   transport: {
     provider: string;
     source: "user" | "system" | "unavailable";
@@ -208,6 +224,28 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
           credentialMask: null,
           ready: true,
         },
+        selection: {
+          sourcePreference: null,
+          transcriptionProviderPreference: null,
+          selectedSource: "system",
+          sourceOptions: [
+            {
+              value: "system",
+              available: true,
+            },
+          ],
+          selectedTranscriptionProvider: "deepgram",
+          transcriptionOptions: [
+            {
+              value: "deepgram",
+              available: true,
+            },
+            {
+              value: "dashscope",
+              available: false,
+            },
+          ],
+        },
         transcription: {
           provider: "deepgram",
           source: "system",
@@ -337,6 +375,18 @@ function formatProviderName(value: string, language: UiLanguage) {
     return language === "zh" ? "未配置" : "Not configured";
   }
 
+  if (value === "livekit") {
+    return "LiveKit";
+  }
+
+  if (value === "deepgram") {
+    return "Deepgram";
+  }
+
+  if (value === "dashscope") {
+    return "DashScope";
+  }
+
   if (value === "mock") {
     return "Mock";
   }
@@ -364,11 +414,64 @@ function formatProviderValue(value: string | null | undefined, language: UiLangu
   return language === "zh" ? "未设置" : "Not set";
 }
 
+export function formatVoiceSourceValue(
+  value: RoomVoiceSourcePreference | "unavailable" | null | undefined,
+  language: UiLanguage,
+) {
+  if (value === "user") {
+    return language === "zh" ? "我的配置" : "My config";
+  }
+
+  if (value === "system") {
+    return language === "zh" ? "平台提供" : "Platform";
+  }
+
+  return language === "zh" ? "未配置" : "Unavailable";
+}
+
+export function formatVoiceTransportValue(
+  voice: RoomMetaState["providers"]["voice"],
+  language: UiLanguage,
+) {
+  return formatProviderName(voice.transport.provider, language);
+}
+
+export function formatVoiceTranscriptionValue(
+  voice: RoomMetaState["providers"]["voice"],
+  language: UiLanguage,
+) {
+  if (!voice.transcriberEnabled) {
+    return language === "zh" ? "已关闭" : "Disabled";
+  }
+
+  return formatProviderName(
+    voice.selection.selectedTranscriptionProvider ?? voice.transcription.provider ?? "",
+    language,
+  );
+}
+
 export function getVoiceProviderLabel(
   voice: RoomMetaState["providers"]["voice"],
   language: UiLanguage,
 ) {
   return formatProviderOwner(voice.providedBy, language);
+}
+
+export function getVoiceProviderSummary(
+  voice: RoomMetaState["providers"]["voice"],
+  language: UiLanguage,
+) {
+  const owner = getVoiceProviderLabel(voice, language);
+  const transport = formatVoiceTransportValue(voice, language);
+
+  if (!voice.transcriberEnabled) {
+    return language === "zh" ? `${owner}：${transport}` : `${owner}: ${transport}`;
+  }
+
+  const transcription = formatVoiceTranscriptionValue(voice, language);
+  return language === "zh"
+    ? `${owner}：${transport}+${transcription}`
+    : `${owner}: ${transport} + ${transcription}`;
 }
 
 export function getAnalysisProviderLabel(
@@ -381,28 +484,19 @@ export function getAnalysisProviderLabel(
 export function getVoiceProviderDetails(voice: VoiceProviderState, language: UiLanguage) {
   const details = [
     {
+      label: language === "zh" ? "语音与转录来源" : "Voice & transcription source",
+      value: formatVoiceSourceValue(
+        voice.selection.selectedSource ?? voice.transport.source,
+        language,
+      ),
+    },
+    {
       label: language === "zh" ? "语音通道" : "Voice transport",
-      value: formatProviderName(voice.transport.provider, language),
+      value: formatVoiceTransportValue(voice, language),
     },
     {
-      label: language === "zh" ? "转录引擎" : "Transcription",
-      value: voice.transcriberEnabled
-        ? formatProviderName(voice.transcription.provider ?? "", language)
-        : language === "zh"
-          ? "已关闭"
-          : "Disabled",
-    },
-    {
-      label: language === "zh" ? "语音来源" : "Transport source",
-      value: formatProviderValue(voice.transport.source, language),
-    },
-    {
-      label: language === "zh" ? "转录来源" : "Transcription source",
-      value: voice.transcriberEnabled
-        ? formatProviderValue(voice.transcription.source, language)
-        : language === "zh"
-          ? "已关闭"
-          : "Disabled",
+      label: language === "zh" ? "转录通道" : "Transcription channel",
+      value: formatVoiceTranscriptionValue(voice, language),
     },
   ];
 

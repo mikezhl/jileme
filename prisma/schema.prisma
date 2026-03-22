@@ -29,22 +29,29 @@ enum TranscriptionProvider {
   DASHSCOPE
 }
 
+enum RoomVoiceSource {
+  USER
+  SYSTEM
+}
+
 model Room {
-  id           String            @id @default(cuid())
-  roomId       String            @unique
-  name         String?
-  status       RoomStatus        @default(ACTIVE)
-  isPublic     Boolean           @default(false)
-  analysisEnabled Boolean        @default(true)
-  endedAt      DateTime?
-  createdById  String?
-  createdBy    User?             @relation("CreatedRooms", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  messages     Message[]
-  participants RoomParticipant[]
-  analysisEvents RoomAnalysisEvent[]
-  analysisState  RoomAnalysisState?
+  id                             String                @id @default(cuid())
+  roomId                         String                @unique
+  name                           String?
+  status                         RoomStatus            @default(ACTIVE)
+  isPublic                       Boolean               @default(false)
+  analysisEnabled                Boolean               @default(true)
+  voiceSourcePreference          RoomVoiceSource?
+  transcriptionProviderPreference TranscriptionProvider?
+  endedAt                        DateTime?
+  createdById                    String?
+  createdBy                      User?                 @relation("CreatedRooms", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt                      DateTime              @default(now())
+  updatedAt                      DateTime              @updatedAt
+  messages                       Message[]
+  participants                   RoomParticipant[]
+  analysisEvents                 RoomAnalysisEvent[]
+  analysisState                  RoomAnalysisState?
 }
 
 model Message {
