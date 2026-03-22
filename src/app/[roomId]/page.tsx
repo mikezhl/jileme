@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import RoomPageClient from "@/components/room-page/room-page";
 import { getCurrentUser } from "@/lib/auth";
 import { findAccessibleRoom } from "@/lib/rooms";
-import { normalizeRoomId } from "@/lib/room-utils";
+import { ensureRoomParticipant, findRoomByRoomId, normalizeRoomId } from "@/lib/room-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +27,15 @@ export default async function RoomPage({ params }: RoomPageProps) {
     redirect("/");
   }
 
-  const room = await findAccessibleRoom(roomId, user.id);
+  let room = await findAccessibleRoom(roomId, user.id);
   if (!room) {
-    redirect("/");
+    const publicRoom = await findRoomByRoomId(roomId);
+    if (!publicRoom?.isPublic) {
+      redirect("/");
+    }
+
+    await ensureRoomParticipant(publicRoom.id, user.id);
+    room = publicRoom;
   }
 
   return (

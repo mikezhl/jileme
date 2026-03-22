@@ -48,6 +48,7 @@ export default function RoomPageClient({
     leaveVoiceCall,
     messages,
     micEnabled,
+    publicTogglePending,
     roomError,
     roomMeta,
     roomRef,
@@ -58,6 +59,7 @@ export default function RoomPageClient({
     speakerSwitchPending,
     startVoiceCall,
     switchSpeakerMode,
+    togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
     voiceCallStarting,
@@ -240,6 +242,9 @@ export default function RoomPageClient({
       }}
       onSubmitTextMessage={submitTextMessage}
       onToggleMicSelector={toggleMicSelector}
+      onTogglePublicRoom={() => {
+        void togglePublicRoom();
+      }}
       onToggleRawMessage={setRawMessageId}
       onToggleRealtimeAnalysis={() => {
         void toggleRealtimeAnalysis();
@@ -255,6 +260,7 @@ export default function RoomPageClient({
       roomId={roomId}
       roomInteractionBlocked={roomInteractionBlocked}
       roomMeta={roomMeta}
+      publicTogglePending={publicTogglePending}
       scores={analysisViewState.scores}
       scrollAnchorRef={scrollAnchorRef}
       selectedMicId={selectedMicId}

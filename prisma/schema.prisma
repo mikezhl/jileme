@@ -34,6 +34,7 @@ model Room {
   roomId       String            @unique
   name         String?
   status       RoomStatus        @default(ACTIVE)
+  isPublic     Boolean           @default(false)
   analysisEnabled Boolean        @default(true)
   endedAt      DateTime?
   createdById  String?

@@ -41,24 +41,33 @@ function RoomHistoryItem({ detailLabel, detailValue, language, room, t }: RoomHi
         aria-label={`${t("进入房间", "Open room")} ${roomDisplayName}${showRoomCode ? ` (${room.roomId})` : ""}`}
       >
         <div className="room-list-item-copy">
-          <div className="room-list-item-head">
-            <strong>{roomDisplayName}</strong>
+          <div className="room-list-main">
+            <div className="room-list-item-head">
+              <strong>{roomDisplayName}</strong>
+            </div>
+
+            <div className="room-list-body">
+              {showRoomCode ? (
+                <p className="room-list-code">
+                  {t("房间代码", "Room code")}: {room.roomId}
+                </p>
+              ) : null}
+              <p>
+                {t("成员", "Members")}: {room.participantCount} | {t("消息", "Messages")}: {room.messageCount}
+              </p>
+              <p>
+                {detailLabel}: {detailValue}
+              </p>
+            </div>
+          </div>
+          <div className="room-list-meta-column">
             <span className="room-list-status" data-status={room.status}>
               {roomStatusLabel(room.status, language)}
             </span>
+            {room.isPublic ? (
+              <span className="room-list-status room-list-status-public">{t("公开", "Public")}</span>
+            ) : null}
           </div>
-
-          {showRoomCode ? (
-            <p className="room-list-code">
-              {t("房间代码", "Room code")}: {room.roomId}
-            </p>
-          ) : null}
-          <p>
-            {t("成员", "Members")}: {room.participantCount} | {t("消息", "Messages")}: {room.messageCount}
-          </p>
-          <p>
-            {detailLabel}: {detailValue}
-          </p>
         </div>
       </Link>
     </li>

@@ -4,7 +4,9 @@ import { getUserTranscriptionSettingsStatus } from "@/features/transcription/cor
 import { getUserProviderKeysMode } from "@/lib/env";
 import { getUserLlmKeyStatus } from "@/lib/llm-provider-keys";
 import { getUserLivekitCredentialStatus } from "@/lib/livekit-credentials";
+import { getPublicRoomsPage } from "@/lib/public-rooms";
 import { prisma } from "@/lib/prisma";
+import { toRoomSummary } from "@/lib/room-summary";
 import { getUserUsageSummary } from "@/lib/usage-stats";
 
 export const dynamic = "force-dynamic";
@@ -13,30 +15,6 @@ type HomePageSearchParams = {
   auth?: string;
   next?: string;
 };
-
-function toRoomSummary(room: {
-  roomId: string;
-  name: string | null;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  endedAt: Date | null;
-  _count: {
-    participants: number;
-    messages: number;
-  };
-}) {
-  return {
-    roomId: room.roomId,
-    roomName: room.name,
-    status: room.status,
-    createdAt: room.createdAt.toISOString(),
-    updatedAt: room.updatedAt.toISOString(),
-    endedAt: room.endedAt?.toISOString() ?? null,
-    participantCount: room._count.participants,
-    messageCount: room._count.messages,
-  };
-}
 
 function normalizeAuthMode(mode?: string) {
   if (mode === "login" || mode === "register") {
@@ -58,7 +36,7 @@ type HomePageProps = {
 
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
-  const user = await getCurrentUser();
+  const [user, publicRoomsResult] = await Promise.all([getCurrentUser(), getPublicRoomsPage(1)]);
   const userProviderKeysMode = getUserProviderKeysMode();
   const allowUserProviderKeys = userProviderKeysMode !== "false";
   const initialAuthMode = user ? null : normalizeAuthMode(params?.auth);
@@ -70,6 +48,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         initialUser={null}
         initialCreatedRooms={[]}
         initialJoinedRooms={[]}
+        initialPublicRooms={publicRoomsResult.rooms}
+        initialPublicRoomsPage={publicRoomsResult.page}
+        initialPublicRoomsTotalCount={publicRoomsResult.totalCount}
+        initialPublicRoomsTotalPages={publicRoomsResult.totalPages}
         initialLivekitStatus={null}
         initialTranscriptionStatus={null}
         initialLlmKeyStatus={null}
@@ -141,6 +123,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         ...toRoomSummary(entry.room),
         joinedAt: entry.joinedAt.toISOString(),
       }))}
+      initialPublicRooms={publicRoomsResult.rooms}
+      initialPublicRoomsPage={publicRoomsResult.page}
+      initialPublicRoomsTotalCount={publicRoomsResult.totalCount}
+      initialPublicRoomsTotalPages={publicRoomsResult.totalPages}
       initialLivekitStatus={livekitStatus}
       initialTranscriptionStatus={transcriptionStatus}
       initialLlmKeyStatus={llmKeyStatus}

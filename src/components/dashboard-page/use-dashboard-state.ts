@@ -16,6 +16,7 @@ import {
   type LivekitStatus,
   type LlmFormState,
   type LlmKeyStatus,
+  type PublicRoomsResponse,
   type RoomAction,
   type StatusResponse,
   type TranscriptionProviderName,
@@ -32,6 +33,10 @@ export function useDashboardState({
   initialUser,
   initialCreatedRooms,
   initialJoinedRooms,
+  initialPublicRooms,
+  initialPublicRoomsPage,
+  initialPublicRoomsTotalCount,
+  initialPublicRoomsTotalPages,
   initialLivekitStatus,
   initialTranscriptionStatus,
   initialLlmKeyStatus,
@@ -45,6 +50,12 @@ export function useDashboardState({
   const [user, setUser] = useState<UserInfo | null>(initialUser);
   const [createdRooms, setCreatedRooms] = useState(initialCreatedRooms);
   const [joinedRooms, setJoinedRooms] = useState(initialJoinedRooms);
+  const [publicRooms, setPublicRooms] = useState(initialPublicRooms);
+  const [publicRoomsPage, setPublicRoomsPage] = useState(initialPublicRoomsPage);
+  const [publicRoomsTotalCount, setPublicRoomsTotalCount] = useState(initialPublicRoomsTotalCount);
+  const [publicRoomsTotalPages, setPublicRoomsTotalPages] = useState(initialPublicRoomsTotalPages);
+  const [publicRoomsLoading, setPublicRoomsLoading] = useState(false);
+  const [publicRoomsError, setPublicRoomsError] = useState("");
   const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(initialUsageSummary);
   const [roomIdToJoin, setRoomIdToJoin] = useState("");
   const [roomActionError, setRoomActionError] = useState("");
@@ -212,6 +223,31 @@ export function useDashboardState({
       setRoomActionError(error instanceof Error ? error.message : t("房间操作失败", "Room action failed"));
     } finally {
       setRoomActionLoading(null);
+    }
+  }
+
+  async function loadPublicRoomsPage(page: number) {
+    setPublicRoomsLoading(true);
+    setPublicRoomsError("");
+
+    try {
+      const endpoint = new URL("/api/rooms/public", window.location.origin);
+      endpoint.searchParams.set("page", String(page));
+      const payload = await readJson<PublicRoomsResponse>(
+        await fetch(endpoint.toString(), { cache: "no-store" }),
+        t("获取公开房间失败", "Failed to load public rooms"),
+      );
+
+      setPublicRooms(payload.rooms);
+      setPublicRoomsPage(payload.page);
+      setPublicRoomsTotalCount(payload.totalCount);
+      setPublicRoomsTotalPages(payload.totalPages);
+    } catch (error) {
+      setPublicRoomsError(
+        error instanceof Error ? error.message : t("获取公开房间失败", "Failed to load public rooms"),
+      );
+    } finally {
+      setPublicRoomsLoading(false);
     }
   }
 
@@ -558,6 +594,13 @@ export function useDashboardState({
     llmLoading,
     openLoginModal,
     openRegisterModal,
+    publicRooms,
+    publicRoomsError,
+    publicRoomsLoading,
+    publicRoomsPage,
+    publicRoomsTotalCount,
+    publicRoomsTotalPages,
+    loadPublicRoomsPage,
     refreshDashboard,
     refreshLivekitStatus,
     refreshLlmStatus,

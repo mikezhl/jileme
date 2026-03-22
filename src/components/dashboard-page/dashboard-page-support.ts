@@ -10,6 +10,7 @@ export type RoomSummary = {
   roomId: string;
   roomName: string | null;
   status: string;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
   endedAt: string | null;
@@ -88,6 +89,10 @@ export type DashboardPageClientProps = {
   initialUser: UserInfo | null;
   initialCreatedRooms: RoomSummary[];
   initialJoinedRooms: RoomSummary[];
+  initialPublicRooms: RoomSummary[];
+  initialPublicRoomsPage: number;
+  initialPublicRoomsTotalCount: number;
+  initialPublicRoomsTotalPages: number;
   initialLivekitStatus: LivekitStatus | null;
   initialTranscriptionStatus: TranscriptionSettingsStatus | null;
   initialLlmKeyStatus: LlmKeyStatus | null;
@@ -106,6 +111,15 @@ export type DashboardResponse = {
   createdRooms: RoomSummary[];
   joinedRooms: RoomSummary[];
   usage: UsageSummary;
+  error?: string;
+};
+
+export type PublicRoomsResponse = {
+  rooms: RoomSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
   error?: string;
 };
 
@@ -192,9 +206,9 @@ export function formatVoiceUsage(value: number, language: UiLanguage) {
 
 export function roomStatusLabel(status: string, language: UiLanguage) {
   if (status === "ENDED") {
-    return language === "zh" ? "已结束" : "Ended";
+    return language === "zh" ? "结束" : "Ended";
   }
-  return language === "zh" ? "进行中" : "Active";
+  return language === "zh" ? "活跃" : "Active";
 }
 
 export function providerLabel(provider: TranscriptionProviderName, language: UiLanguage) {

@@ -83,6 +83,7 @@ export function useRoomSession({
   const [roomError, setRoomError] = useState("");
   const [sendingText, setSendingText] = useState(false);
   const [endingRoom, setEndingRoom] = useState(false);
+  const [publicTogglePending, setPublicTogglePending] = useState(false);
   const [analysisTogglePending, setAnalysisTogglePending] = useState(false);
   const [speakerMode, setSpeakerMode] = useState<RoomSpeakerMode>("self");
   const [speakerSwitchPending, setSpeakerSwitchPending] = useState(false);
@@ -373,6 +374,7 @@ export function useRoomSession({
     setRoomMeta({
       roomName: payload.room.roomName,
       status: payload.room.status,
+      isPublic: payload.room.isPublic,
       analysisEnabled: payload.room.analysisEnabled,
       endedAt: payload.room.endedAt,
       isCreator: payload.room.isCreator,
@@ -934,6 +936,43 @@ export function useRoomSession({
     }
   }, [analysisTogglePending, roomId, roomMeta.analysisEnabled, roomMeta.isCreator, roomMeta.status, t]);
 
+  const togglePublicRoom = useCallback(async () => {
+    if (!roomMeta.isCreator || publicTogglePending) {
+      return;
+    }
+
+    setPublicTogglePending(true);
+    setRoomError("");
+    try {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/public`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isPublic: !roomMeta.isPublic,
+        }),
+      });
+      const payload = (await response.json()) as {
+        room?: { isPublic: boolean };
+        error?: string;
+      };
+      if (!response.ok || !payload.room) {
+        throw new Error(payload.error ?? t("更新公开房间失败", "Failed to update room visibility"));
+      }
+      const nextRoom = payload.room;
+
+      setRoomMeta((current) => ({
+        ...current,
+        isPublic: nextRoom.isPublic,
+      }));
+    } catch (error) {
+      setRoomError(
+        error instanceof Error ? error.message : t("更新公开房间失败", "Failed to update room visibility"),
+      );
+    } finally {
+      setPublicTogglePending(false);
+    }
+  }, [publicTogglePending, roomId, roomMeta.isCreator, roomMeta.isPublic, t]);
+
   const endConversation = useCallback(async () => {
     if (!roomMeta.isCreator || roomMeta.status === "ENDED") {
       return;
@@ -1263,6 +1302,7 @@ export function useRoomSession({
     roomError,
     roomMeta,
     roomRef,
+    publicTogglePending,
     sendTextMessage,
     sendingText,
     setRoomError,
@@ -1270,6 +1310,7 @@ export function useRoomSession({
     speakerSwitchPending,
     startVoiceCall,
     switchSpeakerMode,
+    togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
     voiceCallStarting,

@@ -330,6 +330,21 @@ a:focus-visible {
   gap: 20px;
 }
 
+.room-panel-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.room-panel-summary-meta {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .muted-block p {
   margin: 0;
   color: var(--muted);
@@ -409,11 +424,30 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-.room-list-item-head {
+.room-list-item-copy {
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.room-list-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.room-list-item-head {
+  display: block;
+  min-width: 0;
+}
+
+.room-list-meta-column {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 6px;
 }
 
 .room-list-item strong {
@@ -427,19 +461,24 @@ a:focus-visible {
   white-space: nowrap;
 }
 
-.room-list-item-copy {
-  min-width: 0;
-}
-
 .room-list-code {
   font-size: 0.82rem;
   letter-spacing: 0.01em;
 }
 
-.room-list-item p {
-  margin: 6px 0 0;
+.room-list-body {
+  min-width: 0;
+  margin-top: 6px;
+}
+
+.room-list-body p {
+  margin: 0;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.room-list-body p + p {
+  margin-top: 6px;
 }
 
 .room-list-status {
@@ -465,20 +504,50 @@ a:focus-visible {
   color: #166534;
 }
 
+.room-list-status-public {
+  border-color: var(--line);
+  background: var(--surface);
+  color: #111111;
+}
+
+.room-list-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.room-list-pagination-text {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 @media (max-width: 768px) {
   .room-list-item {
     padding: 16px;
   }
 
-  .room-list-item-head {
+  .room-list-item-copy {
+    position: relative;
     display: block;
-    padding-right: 82px;
+    padding-right: 96px;
   }
 
-  .room-list-status {
+  .room-list-item-head {
+    min-height: 28px;
+  }
+
+  .room-list-meta-column {
     position: absolute;
     top: 14px;
-    right: 16px;
+    right: 0;
+    gap: 6px;
+  }
+
+  .room-list-status,
+  .room-list-status-public {
     min-width: 0;
     height: 28px;
     padding: 0 10px;
@@ -1352,6 +1421,10 @@ a:focus-visible {
   cursor: help;
 }
 
+.visibility-chip-panel {
+  cursor: default;
+}
+
 .provider-chip-main {
   min-width: 0;
   display: flex;
@@ -1783,6 +1856,10 @@ a:focus-visible {
   text-transform: uppercase;
   color: var(--muted);
   letter-spacing: 0.05em;
+}
+
+.sidebar-section-bottom {
+  margin-top: auto;
 }
 
 /* Mobile Side Content (Drawer Style) */

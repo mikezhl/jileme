@@ -82,6 +82,7 @@ export type RoomMetaResponse = {
     roomId: string;
     roomName: string | null;
     status: "ACTIVE" | "ENDED";
+    isPublic: boolean;
     analysisEnabled: boolean;
     endedAt: string | null;
     isCreator: boolean;
@@ -117,6 +118,7 @@ export type TranscriptionState = "idle" | "starting" | "ready" | "disabled";
 export type RoomMetaState = {
   roomName: string | null;
   status: "ACTIVE" | "ENDED";
+  isPublic: boolean;
   analysisEnabled: boolean;
   endedAt: string | null;
   isCreator: boolean;
@@ -180,6 +182,7 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
   return {
     roomName: initialRoomName,
     status: "ACTIVE",
+    isPublic: false,
     analysisEnabled: true,
     endedAt: null,
     isCreator: false,

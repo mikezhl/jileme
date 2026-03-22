@@ -2,33 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requireApiUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
+import { toRoomSummary } from "@/lib/room-summary";
 import { getUserUsageSummary } from "@/lib/usage-stats";
 
 export const runtime = "nodejs";
-
-function toRoomSummary(room: {
-  roomId: string;
-  name: string | null;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  endedAt: Date | null;
-  _count: {
-    participants: number;
-    messages: number;
-  };
-}) {
-  return {
-    roomId: room.roomId,
-    roomName: room.name,
-    status: room.status,
-    createdAt: room.createdAt.toISOString(),
-    updatedAt: room.updatedAt.toISOString(),
-    endedAt: room.endedAt?.toISOString() ?? null,
-    participantCount: room._count.participants,
-    messageCount: room._count.messages,
-  };
-}
 
 export async function GET() {
   try {

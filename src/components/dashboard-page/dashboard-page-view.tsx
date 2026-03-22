@@ -5,6 +5,7 @@ import { AuthModal } from "./sections/auth-modal";
 import { DashboardHeader } from "./sections/dashboard-header";
 import { LivekitSettingsPanel } from "./sections/livekit-settings-panel";
 import { LlmSettingsPanel } from "./sections/llm-settings-panel";
+import { PublicRoomPanel } from "./sections/public-room-panel";
 import { RoomActionsCard } from "./sections/room-actions-card";
 import { RoomHistoryPanel } from "./sections/room-history-panel";
 import { TranscriptionSettingsPanel } from "./sections/transcription-settings-panel";
@@ -57,6 +58,18 @@ export function DashboardPageView({
           />
 
           <section className="minimal-details-wrap">
+            <PublicRoomPanel
+              language={language}
+              onPageChange={state.loadPublicRoomsPage}
+              publicRooms={state.publicRooms}
+              publicRoomsError={state.publicRoomsError}
+              publicRoomsLoading={state.publicRoomsLoading}
+              publicRoomsPage={state.publicRoomsPage}
+              publicRoomsTotalCount={state.publicRoomsTotalCount}
+              publicRoomsTotalPages={state.publicRoomsTotalPages}
+              t={t}
+            />
+
             <RoomHistoryPanel
               createdRooms={state.createdRooms}
               dashboardLoading={state.dashboardLoading}

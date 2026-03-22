@@ -77,6 +77,7 @@ type RoomPageViewProps = {
   onStartVoiceCall: () => void;
   onSubmitTextMessage: (event: FormEvent<HTMLFormElement>) => void;
   onToggleMicSelector: () => void;
+  onTogglePublicRoom: () => void;
   onToggleRawMessage: (nextId: string | null) => void;
   onToggleRealtimeAnalysis: () => void;
   onTranscriptionStatusClick: () => void;
@@ -91,6 +92,7 @@ type RoomPageViewProps = {
   roomId: string;
   roomInteractionBlocked: boolean;
   roomMeta: RoomMetaState;
+  publicTogglePending: boolean;
   scores: {
     own: number;
     other: number;
@@ -482,9 +484,11 @@ function RoomSidebarPanel({
   onCloseMicSelector,
   onSelectMic,
   onToggleMicSelector,
+  onTogglePublicRoom,
   onToggleRealtimeAnalysis,
   overallInsights,
   roomMeta,
+  publicTogglePending,
   scores,
   selectedMicId,
   suggestions,
@@ -500,9 +504,11 @@ function RoomSidebarPanel({
   | "onCloseMicSelector"
   | "onSelectMic"
   | "onToggleMicSelector"
+  | "onTogglePublicRoom"
   | "onToggleRealtimeAnalysis"
   | "overallInsights"
   | "roomMeta"
+  | "publicTogglePending"
   | "scores"
   | "selectedMicId"
   | "suggestions"
@@ -610,7 +616,43 @@ function RoomSidebarPanel({
         </div>
       </div>
 
-      <div className="sidebar-section" style={{ marginTop: "auto" }}>
+      <div className="sidebar-section sidebar-section-bottom">
+        <h4>{t("房间可见性", "Room Visibility")}</h4>
+        <div
+          className="key-status-grid"
+          style={{ fontSize: "0.75rem", gap: "8px", background: "transparent", padding: 0 }}
+        >
+          <div className="room-status provider-chip provider-chip-panel visibility-chip-panel">
+            <div className="provider-chip-main">
+              <span className="provider-chip-label">{t("公开房间", "Public Room")}</span>
+              <strong className="provider-chip-value">
+                {roomMeta.isPublic ? t("所有人可见", "Visible to everyone") : t("仅成员可见", "Members only")}
+              </strong>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={roomMeta.isPublic}
+              aria-label={t("切换公开房间", "Toggle public room")}
+              className={`provider-chip-switch ${roomMeta.isPublic ? "active" : ""}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onTogglePublicRoom();
+              }}
+              disabled={!roomMeta.isCreator || publicTogglePending}
+            >
+              <span className="provider-chip-switch-track">
+                <span className="provider-chip-switch-thumb" />
+              </span>
+              <span className="provider-chip-switch-text">
+                {publicTogglePending ? "..." : roomMeta.isPublic ? t("开", "On") : t("关", "Off")}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="sidebar-section">
         <h4>{t("服务状态", "Providers")}</h4>
         <div
           className="key-status-grid"
@@ -831,6 +873,7 @@ export function RoomPageView({
   onStartVoiceCall,
   onSubmitTextMessage,
   onToggleMicSelector,
+  onTogglePublicRoom,
   onToggleRawMessage,
   onToggleRealtimeAnalysis,
   onTranscriptionStatusClick,
@@ -842,6 +885,7 @@ export function RoomPageView({
   roomId,
   roomInteractionBlocked,
   roomMeta,
+  publicTogglePending,
   scores,
   scrollAnchorRef,
   selectedMicId,
@@ -897,9 +941,11 @@ export function RoomPageView({
       onCloseMicSelector={onCloseMicSelector}
       onSelectMic={onSelectMic}
       onToggleMicSelector={onToggleMicSelector}
+      onTogglePublicRoom={onTogglePublicRoom}
       onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
       overallInsights={overallInsights}
       roomMeta={roomMeta}
+      publicTogglePending={publicTogglePending}
       scores={scores}
       selectedMicId={selectedMicId}
       suggestions={suggestions}
