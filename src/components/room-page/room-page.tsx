@@ -34,7 +34,6 @@ export default function RoomPageClient({
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
   const [hasConfirmedSwitchOnce, setHasConfirmedSwitchOnce] = useState(false);
   const [showMobileAnalysis, setShowMobileAnalysis] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [activeStatusTooltip, setActiveStatusTooltip] = useState<ActiveStatusTooltipState>(null);
 
   const {
@@ -110,16 +109,6 @@ export default function RoomPageClient({
     input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
   }, [chatInput]);
 
-  const copyRoomId = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(roomId);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Ignore clipboard failures.
-    }
-  }, [roomId]);
-
   const submitTextMessage = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -186,7 +175,6 @@ export default function RoomPageClient({
       canConnectRoom={canConnectRoom}
       canParticipate={roomMeta.currentUserCanParticipate}
       connectionState={connectionState}
-      copied={copied}
       endingRoom={endingRoom}
       isAudienceReadOnly={isAudienceReadOnly}
       isCreator={roomMeta.isCreator}
@@ -221,9 +209,6 @@ export default function RoomPageClient({
       onConnectionStatusClick={() =>
         setActiveStatusTooltip(activeStatusTooltip === "connection" ? null : "connection")
       }
-      onCopyRoomId={() => {
-        void copyRoomId();
-      }}
       onLeaveVoiceCall={() => {
         void leaveVoiceCall();
       }}

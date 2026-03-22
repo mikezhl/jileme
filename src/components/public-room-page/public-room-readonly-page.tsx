@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type ChatMessage } from "@/lib/chat-types";
 import { getRoomDisplayName } from "@/lib/room-name";
 
@@ -81,7 +82,12 @@ function parseRealtimeAnalysisMessage(message: ChatMessage) {
 
   try {
     const parsed = JSON.parse(message.content) as unknown;
-    if (!parsed || typeof parsed !== "object" || !("type" in parsed) || parsed.type !== "realtime-analysis") {
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("type" in parsed) ||
+      parsed.type !== "realtime-analysis"
+    ) {
       return null;
     }
 
@@ -186,7 +192,9 @@ function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
             ) : null}
           </div>
           <p className="analysis-insight">{insightA || "本轮无发言"}</p>
-          {scoreA?.reason ? <span className="analysis-score-reason">{scoreA.reason}</span> : null}
+          {scoreA?.reason ? (
+            <span className="analysis-score-reason">{scoreA.reason}</span>
+          ) : null}
         </div>
 
         <div className="analysis-side-section">
@@ -200,7 +208,9 @@ function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
             ) : null}
           </div>
           <p className="analysis-insight">{insightB || "本轮无发言"}</p>
-          {scoreB?.reason ? <span className="analysis-score-reason">{scoreB.reason}</span> : null}
+          {scoreB?.reason ? (
+            <span className="analysis-score-reason">{scoreB.reason}</span>
+          ) : null}
         </div>
       </div>
     </article>
@@ -227,9 +237,15 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
             </div>
 
             <div className="room-meta-row" style={{ flexWrap: "wrap" }}>
-              <span className="room-header-code" style={{ cursor: "default" }}>
+              <RoomIdCopyButton
+                ariaLabel={`复制房间号 ${room.roomId}`}
+                className="room-id-copy-button room-header-code"
+                copiedLabel="复制成功"
+                roomId={room.roomId}
+                title="点击复制房间号"
+              >
                 {room.roomId}
-              </span>
+              </RoomIdCopyButton>
               <span className="room-meta-divider" aria-hidden="true">
                 |
               </span>

@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
 import { type ChatMessage } from "@/lib/chat-types";
 import { type UiLanguage } from "@/lib/ui-language";
@@ -44,7 +45,6 @@ type RoomPageViewProps = {
   chatInput: string;
   chatInputRef: RefObject<HTMLTextAreaElement | null>;
   connectionState: RoomConnectionState;
-  copied: boolean;
   endingRoom: boolean;
   isAudienceReadOnly: boolean;
   isCreator: boolean;
@@ -68,7 +68,6 @@ type RoomPageViewProps = {
   onConnectRoom: () => void;
   onCloseActiveStatusTooltip: () => void;
   onConnectionStatusClick: () => void;
-  onCopyRoomId: () => void;
   onLeaveVoiceCall: () => void;
   onOpenEndRoomConfirm: () => void;
   onOpenMobileAnalysis: () => void;
@@ -832,7 +831,6 @@ export function RoomPageView({
   chatInput,
   chatInputRef,
   connectionState,
-  copied,
   endingRoom,
   isAudienceReadOnly,
   isCreator,
@@ -856,7 +854,6 @@ export function RoomPageView({
   onConnectRoom,
   onCloseActiveStatusTooltip,
   onConnectionStatusClick,
-  onCopyRoomId,
   onLeaveVoiceCall,
   onOpenEndRoomConfirm,
   onOpenMobileAnalysis,
@@ -1007,10 +1004,15 @@ export function RoomPageView({
             </div>
 
             <div className="room-meta-row">
-              <span className="room-header-code" onClick={onCopyRoomId} title={t("点击复制房间号", "Click to copy room ID")}> 
+              <RoomIdCopyButton
+                ariaLabel={t(`复制房间号 ${roomId}`, `Copy room ID ${roomId}`)}
+                className="room-id-copy-button room-header-code"
+                copiedLabel={t("复制成功", "Copied")}
+                roomId={roomId}
+                title={t("点击复制房间号", "Click to copy room ID")}
+              >
                 {roomId}
-                {copied && <span className="copy-tooltip">{t("已复制", "Copied")}</span>}
-              </span>
+              </RoomIdCopyButton>
               <RoomMembersSummary roomMeta={roomMeta} t={t} />
             </div>
           </div>

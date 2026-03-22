@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { getRoomDisplayName } from "@/lib/room-name";
 import { type UiLanguage } from "@/lib/ui-language";
 
@@ -34,25 +35,49 @@ function PublicRoomItem({ language, room, t }: PublicRoomItemProps) {
 
   return (
     <li>
-      <Link
-        className="room-list-item"
-        href={`/${encodeURIComponent(room.roomId)}`}
-        aria-label={`${t("进入公开房间", "Open public room")} ${roomDisplayName}${showRoomCode ? ` (${room.roomId})` : ""}`}
-      >
+      <article className="room-list-item">
+        <Link
+          className="room-list-item-overlay"
+          href={`/${encodeURIComponent(room.roomId)}`}
+          aria-label={`${t("进入公开房间", "Open public room")} ${roomDisplayName}${
+            showRoomCode ? ` (${room.roomId})` : ""
+          }`}
+        />
         <div className="room-list-item-copy">
           <div className="room-list-main">
             <div className="room-list-item-head">
-              <strong>{roomDisplayName}</strong>
+              {showRoomCode ? (
+                <strong>{roomDisplayName}</strong>
+              ) : (
+                <RoomIdCopyButton
+                  ariaLabel={t(`复制房间号 ${room.roomId}`, `Copy room ID ${room.roomId}`)}
+                  className="room-id-copy-button room-list-title-button"
+                  copiedLabel={t("复制成功", "Copied")}
+                  roomId={room.roomId}
+                  title={t("点击复制房间号", "Click to copy room ID")}
+                >
+                  <strong>{roomDisplayName}</strong>
+                </RoomIdCopyButton>
+              )}
             </div>
 
             <div className="room-list-body">
               {showRoomCode ? (
                 <p className="room-list-code">
-                  {t("房间代码", "Room code")}: {room.roomId}
+                  <RoomIdCopyButton
+                    ariaLabel={t(`复制房间号 ${room.roomId}`, `Copy room ID ${room.roomId}`)}
+                    className="room-id-copy-button room-list-code-button"
+                    copiedLabel={t("复制成功", "Copied")}
+                    roomId={room.roomId}
+                    title={t("点击复制房间号", "Click to copy room ID")}
+                  >
+                    {t("房间代码", "Room code")}: {room.roomId}
+                  </RoomIdCopyButton>
                 </p>
               ) : null}
               <p>
-                {t("成员", "Members")}: {room.participantCount} | {t("消息", "Messages")}: {room.messageCount}
+                {t("成员", "Members")}: {room.participantCount} | {t("消息", "Messages")}:{" "}
+                {room.messageCount}
               </p>
               <p>
                 {t("最近活跃", "Updated")}: {formatDate(room.updatedAt, language)}
@@ -66,7 +91,7 @@ function PublicRoomItem({ language, room, t }: PublicRoomItemProps) {
             <span className="room-list-status room-list-status-public">{t("公开", "Public")}</span>
           </div>
         </div>
-      </Link>
+      </article>
     </li>
   );
 }
@@ -104,7 +129,12 @@ export function PublicRoomPanel({
           <>
             <ul className="room-list">
               {publicRooms.map((room) => (
-                <PublicRoomItem key={`public-${room.roomId}`} language={language} room={room} t={t} />
+                <PublicRoomItem
+                  key={`public-${room.roomId}`}
+                  language={language}
+                  room={room}
+                  t={t}
+                />
               ))}
             </ul>
 

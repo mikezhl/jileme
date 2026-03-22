@@ -413,15 +413,21 @@ a:focus-visible {
 }
 
 .room-list-item:hover,
-.room-list-item:focus-visible {
+.room-list-item:focus-within {
   border-color: var(--primary);
   background: var(--primary-soft);
   transform: translateY(-1px);
 }
 
-.room-list-item:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+.room-list-item-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.room-list-item-overlay:focus-visible {
+  outline: none;
 }
 
 .room-list-item-copy {
@@ -464,6 +470,49 @@ a:focus-visible {
 .room-list-code {
   font-size: 0.82rem;
   letter-spacing: 0.01em;
+}
+
+.room-id-copy-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.room-list-title-button {
+  max-width: 100%;
+  border-radius: 6px;
+  padding: 2px 6px;
+  transition: all 0.2s;
+}
+
+.room-list-code-button {
+  display: inline;
+  padding: 0;
+  border-radius: 0;
+  transition: all 0.2s;
+}
+
+.room-list-title-button strong {
+  max-width: 100%;
+}
+
+.room-list-title-button:hover strong,
+.room-list-title-button:focus-visible strong,
+.room-list-code-button:hover,
+.room-list-code-button:focus-visible {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .room-list-body {
@@ -1082,7 +1131,7 @@ a:focus-visible {
   flex-wrap: nowrap;
   align-items: center;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .room-meta-divider {

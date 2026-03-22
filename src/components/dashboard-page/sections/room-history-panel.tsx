@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { getRoomDisplayName } from "@/lib/room-name";
 import { type UiLanguage } from "@/lib/ui-language";
 
@@ -35,25 +36,49 @@ function RoomHistoryItem({ detailLabel, detailValue, language, room, t }: RoomHi
 
   return (
     <li>
-      <Link
-        className="room-list-item"
-        href={`/${encodeURIComponent(room.roomId)}`}
-        aria-label={`${t("进入房间", "Open room")} ${roomDisplayName}${showRoomCode ? ` (${room.roomId})` : ""}`}
-      >
+      <article className="room-list-item">
+        <Link
+          className="room-list-item-overlay"
+          href={`/${encodeURIComponent(room.roomId)}`}
+          aria-label={`${t("进入房间", "Open room")} ${roomDisplayName}${
+            showRoomCode ? ` (${room.roomId})` : ""
+          }`}
+        />
         <div className="room-list-item-copy">
           <div className="room-list-main">
             <div className="room-list-item-head">
-              <strong>{roomDisplayName}</strong>
+              {showRoomCode ? (
+                <strong>{roomDisplayName}</strong>
+              ) : (
+                <RoomIdCopyButton
+                  ariaLabel={t(`复制房间号 ${room.roomId}`, `Copy room ID ${room.roomId}`)}
+                  className="room-id-copy-button room-list-title-button"
+                  copiedLabel={t("复制成功", "Copied")}
+                  roomId={room.roomId}
+                  title={t("点击复制房间号", "Click to copy room ID")}
+                >
+                  <strong>{roomDisplayName}</strong>
+                </RoomIdCopyButton>
+              )}
             </div>
 
             <div className="room-list-body">
               {showRoomCode ? (
                 <p className="room-list-code">
-                  {t("房间代码", "Room code")}: {room.roomId}
+                  <RoomIdCopyButton
+                    ariaLabel={t(`复制房间号 ${room.roomId}`, `Copy room ID ${room.roomId}`)}
+                    className="room-id-copy-button room-list-code-button"
+                    copiedLabel={t("复制成功", "Copied")}
+                    roomId={room.roomId}
+                    title={t("点击复制房间号", "Click to copy room ID")}
+                  >
+                    {t("房间代码", "Room code")}: {room.roomId}
+                  </RoomIdCopyButton>
                 </p>
               ) : null}
               <p>
-                {t("成员", "Members")}: {room.participantCount} | {t("消息", "Messages")}: {room.messageCount}
+                {t("成员", "Members")}: {room.participantCount} | {t("消息", "Messages")}:{" "}
+                {room.messageCount}
               </p>
               <p>
                 {detailLabel}: {detailValue}
@@ -69,7 +94,7 @@ function RoomHistoryItem({ detailLabel, detailValue, language, room, t }: RoomHi
             ) : null}
           </div>
         </div>
-      </Link>
+      </article>
     </li>
   );
 }
@@ -141,7 +166,10 @@ export function RoomHistoryPanel({
       {!isAuthenticated ? (
         <div className="details-content">
           <p className="panel-tip">
-            {t("登录后可查看你创建和参与的房间记录。", "Sign in to view rooms you created or joined.")}
+            {t(
+              "登录后可查看你创建和参与的房间记录。",
+              "Sign in to view rooms you created or joined.",
+            )}
           </p>
         </div>
       ) : (
