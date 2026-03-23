@@ -1,14 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <text
-    x="50%"
-    y="51%"
-    fill="#000000"
-    font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif"
-    font-size="50"
-    font-weight="700"
-    text-anchor="middle"
-    dominant-baseline="central"
-  >
-    急
-  </text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="a" data-name="图层 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1500">
+  <defs>
+    <style>
+      .b {
+        fill: #ed1c24;
+      }
+    </style>
+  </defs>
+  <path d="M700.15,150v486.11H180.98v144.86c0,313.76,255.26,569.03,569.02,569.03s569.02-255.27,569.02-569.03V150h-618.87ZM1219.32,249.7v531.27c0,258.78-210.54,469.32-469.32,469.32s-469.32-210.54-469.32-469.32v-45.16h519.17V249.7h419.47Z"/>
+  <rect class="b" x="363.62" y="316.11" width="153.88" height="153.88"/>
 </svg>

@@ -1,4 +1,4 @@
-# Logicly Chat (急了么)
+![Logicly Chat (急了么) Banner](public/readme-banner.svg)
 
 [English](#english) | [中文](#中文)
 

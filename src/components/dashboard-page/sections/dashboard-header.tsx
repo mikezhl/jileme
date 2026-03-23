@@ -26,7 +26,10 @@ export function DashboardHeader({
   return (
     <header className="minimal-header">
       <div>
-        <h1>{t("急了么？", "Logicly Chat")}</h1>
+        <h1 style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <img src="/favicon-ji.svg" alt="Logo" style={{ height: "1em", width: "auto" }} />
+          {t("急了么？", "Logicly Chat")}
+        </h1>
         <p className="subtitle">{heroSubtitle}</p>
       </div>
 

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 64" width="360" height="51">
+  <defs>
+    <style>
+      .b { fill: #ed1c24; }
+      .icon-path { fill: #202123; }
+      .text-title { font-family: "PingFang SC", "Helvetica Neue", "Microsoft YaHei", "Arial", sans-serif; font-size: 34px; font-weight: 600; fill: #202123; letter-spacing: 0.02em; }
+      @media (prefers-color-scheme: dark) {
+        .icon-path { fill: #c9d1d9; }
+        .text-title { fill: #c9d1d9; }
+      }
+    </style>
+  </defs>
+  <g transform="translate(-7.24, 8) scale(0.04)">
+    <path class="icon-path" d="M700.15,150v486.11H180.98v144.86c0,313.76,255.26,569.03,569.02,569.03s569.02-255.27,569.02-569.03V150h-618.87ZM1219.32,249.7v531.27c0,258.78-210.54,469.32-469.32,469.32s-469.32-210.54-469.32-469.32v-45.16h519.17V249.7h419.47Z"/>
+    <rect class="b" x="363.62" y="316.11" width="153.88" height="153.88"/>
+  </g>
+  <text x="56" y="48" class="text-title">Logicly Chat (急了么)</text>
+</svg>
