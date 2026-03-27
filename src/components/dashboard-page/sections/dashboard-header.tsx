@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { type DashboardTranslate, type UserInfo } from "../dashboard-page-support";
 
 type DashboardHeaderProps = {
@@ -27,7 +29,7 @@ export function DashboardHeader({
     <header className="minimal-header">
       <div>
         <h1 style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <img src="/favicon-ji.svg" alt="Logo" style={{ height: "1em", width: "auto" }} />
+          <Image src="/favicon-ji.svg" alt="Logo" width={48} height={48} style={{ height: "1em", width: "auto" }} />
           {t("急了么？", "Logicly Chat")}
         </h1>
         <p className="subtitle">{heroSubtitle}</p>
@@ -75,10 +77,10 @@ export function DashboardHeader({
           </>
         ) : (
           <>
-            <button type="button" className="ghost-btn" onClick={onOpenLogin}>
+            <button type="button" className="ghost-btn" onClick={() => onOpenLogin()}>
               {t("登录", "Sign In")}
             </button>
-            <button type="button" className="primary-btn" onClick={onOpenRegister}>
+            <button type="button" className="primary-btn" onClick={() => onOpenRegister()}>
               {t("注册", "Sign Up")}
             </button>
           </>

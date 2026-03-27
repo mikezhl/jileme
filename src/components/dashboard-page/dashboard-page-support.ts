@@ -147,8 +147,8 @@ export function emptyProviderForm(): TranscriptionFormState {
   return { deepgram: "", dashscope: "" };
 }
 
-export function normalizeNextPath(value: string | null | undefined) {
-  if (!value || !value.startsWith("/")) {
+export function normalizeNextPath(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith("/")) {
     return null;
   }
   return value;

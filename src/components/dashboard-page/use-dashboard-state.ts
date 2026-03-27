@@ -97,10 +97,10 @@ export function useDashboardState({
   const hasHistory = createdRooms.length > 0 || joinedRooms.length > 0;
   const authTitle = authMode === "register" ? t("注册", "Sign Up") : t("登录", "Sign In");
 
-  function openAuthModal(mode: NonNullable<typeof authMode>, nextPath?: string | null) {
+  function openAuthModal(mode: NonNullable<typeof authMode>, nextPath?: unknown) {
     setAuthMode(mode);
     setAuthError("");
-    if (typeof nextPath !== "undefined") {
+    if (nextPath === null || typeof nextPath === "string") {
       setAuthNextPath(normalizeNextPath(nextPath));
     }
   }

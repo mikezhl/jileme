@@ -12,19 +12,22 @@ import { getUserUsageSummary } from "@/lib/usage-stats";
 export const dynamic = "force-dynamic";
 
 type HomePageSearchParams = {
-  auth?: string;
-  next?: string;
+  auth?: string | string[];
+  next?: string | string[];
 };
 
-function normalizeAuthMode(mode?: string) {
+function normalizeAuthMode(mode?: string | string[]) {
+  if (typeof mode !== "string") {
+    return null;
+  }
   if (mode === "login" || mode === "register") {
     return mode;
   }
   return null;
 }
 
-function normalizeNextPath(path?: string) {
-  if (!path || !path.startsWith("/")) {
+function normalizeNextPath(path?: string | string[]) {
+  if (typeof path !== "string" || !path.startsWith("/")) {
     return null;
   }
   return path;
