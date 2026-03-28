@@ -5,6 +5,10 @@ import { Prisma, RoomStatus } from "@prisma/client";
 import { DEFAULT_DISPLAY_NAME } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import {
+  getDefaultRoomAnalysisProfilePreference,
+  toPrismaRoomAnalysisProfile,
+} from "@/lib/room-analysis-profile";
+import {
   getDefaultRoomTranscriptionLanguageForUiLanguage,
   toPrismaRoomTranscriptionLanguage,
 } from "@/lib/room-transcription-language";
@@ -42,6 +46,9 @@ export async function createOwnedRoom(userId: string, uiLanguage: UiLanguage = D
         data: {
           roomId,
           createdById: userId,
+          analysisProfilePreference: toPrismaRoomAnalysisProfile(
+            getDefaultRoomAnalysisProfilePreference(),
+          )!,
           transcriptionLanguagePreference: toPrismaRoomTranscriptionLanguage(
             getDefaultRoomTranscriptionLanguageForUiLanguage(uiLanguage),
           ),

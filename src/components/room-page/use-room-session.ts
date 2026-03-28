@@ -6,6 +6,7 @@ import {
   decodeLivekitTranscriptionStatusEvent,
   LIVEKIT_TRANSCRIPTION_STATUS_TOPIC,
 } from "@/lib/livekit-transcription-status-event";
+import { type RoomAnalysisProfilePreference } from "@/lib/room-analysis-profile";
 import { type ChatMessage } from "@/lib/chat-types";
 import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
@@ -106,6 +107,7 @@ export function useRoomSession({
   const [sendingText, setSendingText] = useState(false);
   const [endingRoom, setEndingRoom] = useState(false);
   const [publicTogglePending, setPublicTogglePending] = useState(false);
+  const [analysisProfilePending, setAnalysisProfilePending] = useState(false);
   const [analysisTogglePending, setAnalysisTogglePending] = useState(false);
   const [voiceSettingsPending, setVoiceSettingsPending] = useState(false);
   const [speakerMode, setSpeakerMode] = useState<RoomSpeakerMode>("self");
@@ -1042,7 +1044,12 @@ export function useRoomSession({
   ]);
 
   const toggleRealtimeAnalysis = useCallback(async () => {
-    if (!roomMeta.isCreator || analysisTogglePending || roomMeta.status === "ENDED") {
+    if (
+      !roomMeta.isCreator ||
+      analysisTogglePending ||
+      analysisProfilePending ||
+      roomMeta.status === "ENDED"
+    ) {
       return;
     }
 
@@ -1076,7 +1083,61 @@ export function useRoomSession({
     } finally {
       setAnalysisTogglePending(false);
     }
-  }, [analysisTogglePending, roomId, roomMeta.analysisEnabled, roomMeta.isCreator, roomMeta.status, t]);
+  }, [
+    analysisProfilePending,
+    analysisTogglePending,
+    roomId,
+    roomMeta.analysisEnabled,
+    roomMeta.isCreator,
+    roomMeta.status,
+    t,
+  ]);
+
+  const updateAnalysisProfile = useCallback(
+    async (profile: RoomAnalysisProfilePreference) => {
+      if (!roomMeta.isCreator || analysisProfilePending || roomMeta.status === "ENDED") {
+        return;
+      }
+
+      setAnalysisProfilePending(true);
+      setRoomError("");
+      try {
+        const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/analysis`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile }),
+        });
+        const payload = (await response.json()) as {
+          room?: {
+            analysisEnabled: boolean;
+          };
+          providers?: {
+            analysis: RoomMetaState["providers"]["analysis"];
+          };
+          error?: string;
+        };
+        if (!response.ok || !payload.providers?.analysis || !payload.room) {
+          throw new Error(payload.error ?? t("更新分析方案失败", "Failed to update analysis profile"));
+        }
+
+        setRoomMeta((current) => ({
+          ...current,
+          analysisEnabled: payload.room!.analysisEnabled,
+          providers: {
+            ...current.providers,
+            analysis: payload.providers!.analysis,
+          },
+        }));
+      } catch (error) {
+        setRoomError(
+          error instanceof Error ? error.message : t("更新分析方案失败", "Failed to update analysis profile"),
+        );
+      } finally {
+        setAnalysisProfilePending(false);
+      }
+    },
+    [analysisProfilePending, roomId, roomMeta.isCreator, roomMeta.status, t],
+  );
 
   const togglePublicRoom = useCallback(async () => {
     if (!roomMeta.isCreator || publicTogglePending) {
@@ -1435,6 +1496,7 @@ export function useRoomSession({
   ]);
 
   return {
+    analysisProfilePending,
     analysisTogglePending,
     audioContainerRef,
     connectRoom,
@@ -1459,6 +1521,7 @@ export function useRoomSession({
     togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
+    updateAnalysisProfile,
     updateVoiceSettings,
     voiceCallStarting,
     voiceSettingsPending,

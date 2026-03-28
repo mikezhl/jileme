@@ -69,6 +69,7 @@ function buildUserMessage(invocation: ConversationLlmInvocation) {
     {
       mode: invocation.mode,
       style: invocation.style,
+      outputLanguage: invocation.outputLanguage,
       input: invocation.input,
     },
     null,

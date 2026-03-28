@@ -197,7 +197,7 @@ export async function POST(request: Request, context: RouteContext) {
       );
       if (!requestedLanguage) {
         return NextResponse.json(
-          { error: "transcriptionLanguage must be zh, en, or auto" },
+          { error: "transcriptionLanguage must be zh or en" },
           { status: 400 },
         );
       }

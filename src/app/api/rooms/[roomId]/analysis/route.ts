@@ -3,7 +3,15 @@ import { NextResponse } from "next/server";
 
 import { advanceRealtimeAnalysisCursorToLatestConversationMessage } from "@/features/analysis/service/analysis-control";
 import { requireApiUser } from "@/lib/auth-guard";
+import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
+import { buildRoomAnalysisProviderModule } from "@/lib/provider-modules";
 import { prisma } from "@/lib/prisma";
+import {
+  fromPrismaRoomAnalysisProfile,
+  normalizeRoomAnalysisProfilePreference,
+  toPrismaRoomAnalysisProfile,
+} from "@/lib/room-analysis-profile";
+import { fromPrismaRoomTranscriptionLanguage } from "@/lib/room-transcription-language";
 import { normalizeRoomId } from "@/lib/room-utils";
 
 type RouteContext = {
@@ -14,6 +22,7 @@ type RouteContext = {
 
 type UpdateRoomAnalysisRequest = {
   enabled?: boolean;
+  profile?: string;
 };
 
 export const runtime = "nodejs";
@@ -32,8 +41,20 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const body = (await request.json()) as UpdateRoomAnalysisRequest;
-    if (typeof body?.enabled !== "boolean") {
+    const enabledProvided = Object.prototype.hasOwnProperty.call(body ?? {}, "enabled");
+    const profileProvided = Object.prototype.hasOwnProperty.call(body ?? {}, "profile");
+    if (!enabledProvided && !profileProvided) {
+      return NextResponse.json({ error: "enabled or profile must be provided" }, { status: 400 });
+    }
+    if (enabledProvided && typeof body?.enabled !== "boolean") {
       return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
+    }
+
+    const nextProfile = profileProvided
+      ? normalizeRoomAnalysisProfilePreference(body.profile)
+      : null;
+    if (profileProvided && !nextProfile) {
+      return NextResponse.json({ error: "profile must be default or humor" }, { status: 400 });
     }
 
     const room = await prisma.room.findUnique({
@@ -44,6 +65,13 @@ export async function POST(request: Request, context: RouteContext) {
         status: true,
         createdById: true,
         analysisEnabled: true,
+        analysisProfilePreference: true,
+        transcriptionLanguagePreference: true,
+        createdBy: {
+          select: {
+            username: true,
+          },
+        },
       },
     });
 
@@ -62,20 +90,41 @@ export async function POST(request: Request, context: RouteContext) {
     const updated = await prisma.room.update({
       where: { id: room.id },
       data: {
-        analysisEnabled: body.enabled,
+        ...(enabledProvided ? { analysisEnabled: body.enabled } : {}),
+        ...(profileProvided
+          ? { analysisProfilePreference: toPrismaRoomAnalysisProfile(nextProfile)! }
+          : {}),
       },
       select: {
         roomId: true,
         analysisEnabled: true,
+        analysisProfilePreference: true,
+        transcriptionLanguagePreference: true,
+        createdById: true,
       },
     });
 
-    if (!updated.analysisEnabled) {
+    if (enabledProvided && !updated.analysisEnabled) {
       await advanceRealtimeAnalysisCursorToLatestConversationMessage(room.id);
     }
 
+    const llmRuntime = await resolveConversationLlmRuntimeForOwner(updated.createdById);
+    const analysisProvider = buildRoomAnalysisProviderModule(
+      llmRuntime,
+      room.createdBy?.username ?? null,
+      {
+        profilePreference: fromPrismaRoomAnalysisProfile(updated.analysisProfilePreference),
+        transcriptionLanguagePreference: fromPrismaRoomTranscriptionLanguage(
+          updated.transcriptionLanguagePreference,
+        ),
+      },
+    );
+
     return NextResponse.json({
       room: updated,
+      providers: {
+        analysis: analysisProvider,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update analysis settings";

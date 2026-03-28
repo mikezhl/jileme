@@ -40,6 +40,11 @@ enum RoomTranscriptionLanguage {
   AUTO
 }
 
+enum RoomAnalysisProfile {
+  DEFAULT
+  HUMOR
+}
+
 model Room {
   id                             String                @id @default(cuid())
   roomId                         String                @unique
@@ -48,6 +53,7 @@ model Room {
   status                         RoomStatus            @default(ACTIVE)
   isPublic                       Boolean               @default(false)
   analysisEnabled                Boolean               @default(true)
+  analysisProfilePreference      RoomAnalysisProfile   @default(DEFAULT)
   voiceSourcePreference          RoomVoiceSource?
   transcriptionProviderPreference TranscriptionProvider?
   transcriptionLanguagePreference RoomTranscriptionLanguage?

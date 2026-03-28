@@ -3,9 +3,15 @@ import {
   type ConversationLlmProviderName,
   resolveConversationLlmRuntimeForOwner,
 } from "@/lib/llm-provider-keys";
+import {
+  getDefaultRoomAnalysisProfilePreference,
+  resolveConversationOutputLanguage,
+  type RoomAnalysisProfilePreference,
+} from "@/lib/room-analysis-profile";
+import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { MockConversationLlmProvider } from "./mock-llm";
 import { OpenAiCompatibleConversationLlmProvider } from "./openai-compatible-llm";
-import { resolvePromptTemplate } from "./prompts";
+import { resolvePromptProfile, resolvePromptTemplate } from "./prompts";
 import { buildEmptyRealtimeAnalysisContent } from "./realtime-analysis";
 import {
   ConversationLlmProvider,
@@ -23,18 +29,35 @@ const providerRegistry: Record<ConversationLlmProviderName, ConversationLlmProvi
 const REALTIME_RETRY_DELAYS_MS = [1000, 2000];
 const SUMMARY_RETRY_DELAYS_MS = [1000, 2000, 5000];
 
-function getRealtimePromptStyle() {
-  return process.env.CONVERSATION_REALTIME_PROMPT_STYLE ?? "default_cn";
+type ConversationAnalysisPromptOptions = {
+  profilePreference?: RoomAnalysisProfilePreference | null;
+  transcriptionLanguagePreference?: RoomTranscriptionLanguagePreference | null;
+};
+
+function getDefaultAnalysisProfileFromEnv() {
+  return (
+    process.env.CONVERSATION_ANALYSIS_PROFILE ??
+    process.env.CONVERSATION_REALTIME_PROMPT_STYLE ??
+    process.env.CONVERSATION_SUMMARY_PROMPT_STYLE ??
+    getDefaultRoomAnalysisProfilePreference()
+  );
 }
 
-function getSummaryPromptStyle() {
-  return process.env.CONVERSATION_SUMMARY_PROMPT_STYLE ?? "default_cn";
+function getRequestedAnalysisProfile(
+  profilePreference?: RoomAnalysisProfilePreference | null,
+) {
+  return profilePreference ?? resolvePromptProfile(getDefaultAnalysisProfileFromEnv());
 }
 
-export function getConversationAnalysisPromptProfiles() {
+export function resolveConversationAnalysisPromptSelection(
+  options?: ConversationAnalysisPromptOptions,
+) {
+  const outputLanguage = resolveConversationOutputLanguage(options?.transcriptionLanguagePreference);
+  const profile = getRequestedAnalysisProfile(options?.profilePreference);
+
   return {
-    realtime: resolvePromptTemplate("realtime", getRealtimePromptStyle()).style,
-    summary: resolvePromptTemplate("summary", getSummaryPromptStyle()).style,
+    profile,
+    outputLanguage,
   };
 }
 
@@ -139,8 +162,14 @@ export async function invokeRealtimeConversationAnalysis(
   input: RealtimeConversationInput,
   ownerUserId?: string | null,
   runtimeOverride?: ResolvedConversationLlmRuntime,
+  promptOptions?: ConversationAnalysisPromptOptions,
 ): Promise<ConversationLlmInvocationResult> {
-  const promptResolution = resolvePromptTemplate("realtime", getRealtimePromptStyle());
+  const promptSelection = resolveConversationAnalysisPromptSelection(promptOptions);
+  const promptResolution = resolvePromptTemplate(
+    "realtime",
+    promptSelection.profile,
+    promptSelection.outputLanguage,
+  );
   let source: ConversationLlmInvocationResult["source"] = "unavailable";
 
   try {
@@ -153,8 +182,9 @@ export async function invokeRealtimeConversationAnalysis(
       provider,
       {
         mode: "realtime",
-        style: promptResolution.style,
+        style: promptResolution.profile,
         prompt: promptResolution.prompt,
+        outputLanguage: promptResolution.outputLanguage,
         input,
         runtime,
       },
@@ -177,8 +207,14 @@ export async function invokeConversationSummary(
   input: SummaryConversationInput,
   ownerUserId?: string | null,
   runtimeOverride?: ResolvedConversationLlmRuntime,
+  promptOptions?: ConversationAnalysisPromptOptions,
 ): Promise<ConversationLlmInvocationResult> {
-  const promptResolution = resolvePromptTemplate("summary", getSummaryPromptStyle());
+  const promptSelection = resolveConversationAnalysisPromptSelection(promptOptions);
+  const promptResolution = resolvePromptTemplate(
+    "summary",
+    promptSelection.profile,
+    promptSelection.outputLanguage,
+  );
   let source: ConversationLlmInvocationResult["source"] = "unavailable";
 
   try {
@@ -191,8 +227,9 @@ export async function invokeConversationSummary(
       provider,
       {
         mode: "summary",
-        style: promptResolution.style,
+        style: promptResolution.profile,
         prompt: promptResolution.prompt,
+        outputLanguage: promptResolution.outputLanguage,
         input,
         runtime,
       },

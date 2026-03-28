@@ -202,16 +202,14 @@ function buildDeepgramRuntime(
   const configured = isValidTranscriptionApiKey("deepgram", apiKey);
   const envDetectLanguage = parseBooleanEnv(optionalEnv("DEEPGRAM_DETECT_LANGUAGE"), false);
   const resolvedLanguage =
-    languagePreference === "auto"
-      ? null
-      : languagePreference === "en"
-        ? "en"
-        : languagePreference === "zh"
-          ? "zh"
-          : envDetectLanguage
-            ? null
-            : (optionalEnv("DEEPGRAM_LANGUAGE") ?? "zh");
-  const detectLanguage = languagePreference === null ? envDetectLanguage : languagePreference === "auto";
+    languagePreference === "en"
+      ? "en"
+      : languagePreference === "zh"
+        ? "zh"
+        : envDetectLanguage
+          ? null
+          : (optionalEnv("DEEPGRAM_LANGUAGE") ?? "zh");
+  const detectLanguage = languagePreference === null ? envDetectLanguage : false;
   return {
     provider: "deepgram",
     apiKey,
@@ -252,13 +250,11 @@ function buildDashScopeRuntime(
     baseUrl: optionalEnv("DASHSCOPE_REALTIME_URL") ?? "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
     model: optionalEnv("DASHSCOPE_REALTIME_MODEL") ?? "qwen3-asr-flash-realtime",
     language:
-      languagePreference === "auto"
-        ? null
-        : languagePreference === "en"
-          ? "en"
-          : languagePreference === "zh"
-            ? "zh"
-            : (optionalEnv("DASHSCOPE_REALTIME_LANGUAGE") ?? "zh"),
+      languagePreference === "en"
+        ? "en"
+        : languagePreference === "zh"
+          ? "zh"
+          : (optionalEnv("DASHSCOPE_REALTIME_LANGUAGE") ?? "zh"),
     inputAudioFormat: optionalEnv("DASHSCOPE_REALTIME_AUDIO_FORMAT") ?? "pcm",
     sampleRate: parseIntegerEnv(optionalEnv("DASHSCOPE_REALTIME_SAMPLE_RATE"), 16000),
     serverVad: parseBooleanEnv(optionalEnv("DASHSCOPE_REALTIME_SERVER_VAD"), true),
@@ -495,10 +491,6 @@ function buildSelectionState(options: {
   const selectedTranscriptionLanguage =
     options.preferences.transcriptionLanguagePreference ??
     inferRoomTranscriptionLanguagePreference({
-      detectLanguage:
-        options.runtime.transcription?.provider === "deepgram"
-          ? options.runtime.transcription.detectLanguage
-          : false,
       language: options.runtime.transcription?.language ?? null,
     }) ??
     "zh";

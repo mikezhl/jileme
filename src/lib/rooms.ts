@@ -2,6 +2,7 @@ import { RoomStatus } from "@prisma/client";
 
 import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
 import { buildRoomProviderModules } from "@/lib/provider-modules";
+import { fromPrismaRoomAnalysisProfile } from "@/lib/room-analysis-profile";
 import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/runtime";
 import { prisma } from "@/lib/prisma";
@@ -61,7 +62,11 @@ export async function buildRoomRuntimeInfo(roomId: string, userId: string) {
     resolveConversationLlmRuntimeForOwner(room.createdById),
   ]);
   const isCreator = room.createdById === userId;
-  const providers = buildRoomProviderModules(voiceRuntime, llmRuntime, owner?.username ?? null);
+  const roomVoicePreferences = getRoomVoiceRuntimePreferences(room);
+  const providers = buildRoomProviderModules(voiceRuntime, llmRuntime, owner?.username ?? null, {
+    profilePreference: fromPrismaRoomAnalysisProfile(room.analysisProfilePreference),
+    transcriptionLanguagePreference: roomVoicePreferences.transcriptionLanguagePreference,
+  });
 
   return {
     room,

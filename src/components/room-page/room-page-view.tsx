@@ -13,6 +13,7 @@ import {
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
 import { getArchiveMessageSide } from "@/lib/archive-room";
+import { type RoomAnalysisProfilePreference } from "@/lib/room-analysis-profile";
 import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
@@ -21,6 +22,7 @@ import { type UiLanguage } from "@/lib/ui-language";
 
 import {
   formatTime,
+  formatAnalysisProfileValue,
   formatVoiceSourceValue,
   formatVoiceTranscriptionValue,
   formatVoiceTransportValue,
@@ -41,6 +43,7 @@ import {
 
 type RoomPageViewProps = {
   activeStatusTooltip: ActiveStatusTooltipState;
+  analysisProfilePending: boolean;
   analysisTogglePending: boolean;
   analysisViewState: AnalysisViewState;
   audioContainerRef: RefObject<HTMLDivElement | null>;
@@ -85,6 +88,7 @@ type RoomPageViewProps = {
   onTogglePublicRoom: () => void;
   onToggleRawMessage: (nextId: string | null) => void;
   onToggleRealtimeAnalysis: () => void;
+  onUpdateAnalysisProfile: (profile: RoomAnalysisProfilePreference) => void;
   onUpdateRoomTranscriptionLanguage: (language: RoomTranscriptionLanguagePreference) => void;
   onUpdateVoiceSource: (source: RoomVoiceSourcePreference) => void;
   onUpdateVoiceTranscriptionProvider: (provider: TranscriptionProviderName) => void;
@@ -253,10 +257,6 @@ function ArchiveOtherMessage({
       <p>{message.content}</p>
     </article>
   );
-}
-
-function getRoomStatusLabel(status: RoomMetaState["status"], t: RoomPageTranslate) {
-  return status === "ENDED" ? t("已结束", "Ended") : t("进行中", "Active");
 }
 
 function getRoomMemberRoleLabel(
@@ -626,9 +626,6 @@ function getRoomTranscriptionLanguageLabel(
   if (value === "en") {
     return t("英文", "English");
   }
-  if (value === "auto") {
-    return t("自动", "Auto");
-  }
   return t("中文", "Chinese");
 }
 
@@ -656,7 +653,6 @@ function RoomTranscriptionLanguageControl({
   const options = ([
     "zh",
     "en",
-    "auto",
   ] as const).map((value) => ({
     value,
     label: getRoomTranscriptionLanguageLabel(value, t),
@@ -666,7 +662,7 @@ function RoomTranscriptionLanguageControl({
   const sliderStyle: CSSProperties = {
     position: "relative",
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     alignItems: "center",
     width: "100%",
     minWidth: "100%",
@@ -683,7 +679,7 @@ function RoomTranscriptionLanguageControl({
     position: "absolute",
     top: "2px",
     left: "2px",
-    width: "calc((100% - 4px) / 3)",
+    width: "calc((100% - 4px) / 2)",
     height: "calc(100% - 4px)",
     borderRadius: "10px",
     background: "var(--foreground)",
@@ -708,11 +704,11 @@ function RoomTranscriptionLanguageControl({
       {showOwnerOnlyHint ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
       <div className="room-status provider-chip provider-chip-panel visibility-chip-panel">
         <div className="provider-chip-main" style={{ width: "100%" }}>
-          <span className="provider-chip-label">{t("转录语言", "Transcription Language")}</span>
+          <span className="provider-chip-label">{t("语言", "Language")}</span>
           <div
             className={`room-transcription-language-slider ${!isOwner ? "locked" : ""}`}
             role="radiogroup"
-            aria-label={t("选择转录语言", "Select transcription language")}
+            aria-label={t("选择语言", "Select language")}
             aria-disabled={controlsDisabled || !isOwner}
             title={!isOwner ? ownerOnlyMessage : undefined}
             style={sliderStyle}
@@ -979,7 +975,177 @@ function VoiceProviderPopover({
   );
 }
 
+function AnalysisProviderPopover({
+  analysisProfilePending,
+  analysisTogglePending,
+  language,
+  onOwnerOnlySettingAttempt,
+  onToggleRealtimeAnalysis,
+  onUpdateAnalysisProfile,
+  roomMeta,
+  showOwnerOnlyHint,
+  t,
+}: Pick<
+  RoomPageViewProps,
+  | "analysisProfilePending"
+  | "analysisTogglePending"
+  | "language"
+  | "onToggleRealtimeAnalysis"
+  | "onUpdateAnalysisProfile"
+  | "roomMeta"
+  | "t"
+> & {
+  onOwnerOnlySettingAttempt: () => void;
+  showOwnerOnlyHint: boolean;
+}) {
+  const [openMenu, setOpenMenu] = useState<"profile" | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const analysis = roomMeta.providers.analysis;
+  const isOwner = roomMeta.isCreator;
+  const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
+  const controlsDisabled = analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED";
+  const selectedProfile = analysis.selection.selectedProfile;
+  const displayValue = formatAnalysisProfileValue(selectedProfile, language);
+  const availableProfileCount = analysis.selection.profileOptions.filter((option) => option.available).length;
+  const canSelectProfile =
+    isOwner &&
+    (availableProfileCount > 1 ||
+      Boolean(
+        analysis.selection.selectedProfile &&
+          analysis.selection.profileOptions.some(
+            (option) => option.value === analysis.selection.selectedProfile && !option.available,
+          ),
+      ));
+  const showLockedProfileControl = !isOwner;
+  const profileOptions: PopoverInlineMenuOption[] = analysis.selection.profileOptions.map((option) => ({
+    value: option.value,
+    label: formatAnalysisProfileValue(option.value, language),
+    disabled: !option.available,
+  }));
+
+  useEffect(() => {
+    if (openMenu === null) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (popoverRef.current?.contains(target)) {
+        return;
+      }
+
+      setOpenMenu(null);
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenu]);
+
+  return (
+    <div className="provider-tooltip">
+      {showOwnerOnlyHint ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
+      <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
+        <div className="provider-chip-main">
+          <span className="provider-chip-label">{t("大模型分析", "LLM Analysis")}</span>
+          <strong className="provider-chip-value">{getAnalysisProviderLabel(analysis, language)}</strong>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={roomMeta.analysisEnabled}
+          aria-disabled={!isOwner || analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED"}
+          aria-label={t("切换实时大模型分析", "Toggle realtime LLM analysis")}
+          className={`provider-chip-switch ${roomMeta.analysisEnabled ? "active" : ""}`}
+          title={!isOwner ? ownerOnlyMessage : undefined}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!isOwner) {
+              onOwnerOnlySettingAttempt();
+              return;
+            }
+            onToggleRealtimeAnalysis();
+          }}
+          disabled={analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED"}
+        >
+          <span className="provider-chip-switch-track">
+            <span className="provider-chip-switch-thumb" />
+          </span>
+          <span className="provider-chip-switch-text">
+            {analysisTogglePending ? "..." : roomMeta.analysisEnabled ? t("开", "On") : t("关", "Off")}
+          </span>
+        </button>
+      </div>
+      <div ref={popoverRef} className="provider-popover provider-popover-form" role="tooltip">
+        <div className="provider-popover-title">{t("大模型分析", "LLM Analysis")}</div>
+
+        <div className="provider-popover-row provider-popover-row-control">
+          <span className="provider-popover-label">{t("分析方案", "Analysis profile")}</span>
+          {canSelectProfile || showLockedProfileControl ? (
+            <PopoverInlineMenu
+              ariaLabel={t("选择大模型分析方案", "Select analysis profile")}
+              displayValue={displayValue}
+              disabled={controlsDisabled}
+              isOpen={openMenu === "profile"}
+              onOwnerOnlySettingAttempt={onOwnerOnlySettingAttempt}
+              ownerOnlyMessage={ownerOnlyMessage}
+              ownerLocked={!isOwner}
+              options={profileOptions}
+              placeholder={t("未设置", "Not set")}
+              value={selectedProfile}
+              onChange={(nextValue) => {
+                const typedValue = nextValue as RoomAnalysisProfilePreference;
+                if (!typedValue || typedValue === analysis.selection.selectedProfile) {
+                  return;
+                }
+                onUpdateAnalysisProfile(typedValue);
+              }}
+              onOpenChange={(nextOpen) => setOpenMenu(nextOpen ? "profile" : null)}
+            />
+          ) : (
+            <strong className="provider-popover-value">{displayValue}</strong>
+          )}
+        </div>
+
+        {getAnalysisProviderDetails(analysis, language).map((item) => (
+          <div key={`analysis-${item.label}`} className="provider-popover-row">
+            <span className="provider-popover-label">{item.label}</span>
+            <strong className="provider-popover-value">{item.value}</strong>
+          </div>
+        ))}
+
+        {isOwner ? (
+          <p className="provider-popover-hint">
+            {analysisProfilePending
+              ? t("正在应用新方案...", "Applying new analysis profile...")
+              : t(
+                  "切换方案后，新的实时分析与总结会按当前房间设置继续生成。",
+                  "After switching profiles, new realtime analyses and summaries will follow the current room settings.",
+                )}
+          </p>
+        ) : (
+          <p className="provider-popover-hint">{ownerOnlyMessage}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RoomSidebarPanel({
+  analysisProfilePending,
   analysisTogglePending,
   isZh,
   language,
@@ -991,6 +1157,7 @@ function RoomSidebarPanel({
   onToggleMicSelector,
   onTogglePublicRoom,
   onToggleRealtimeAnalysis,
+  onUpdateAnalysisProfile,
   onUpdateRoomTranscriptionLanguage,
   onUpdateVoiceSource,
   onUpdateVoiceTranscriptionProvider,
@@ -1004,6 +1171,7 @@ function RoomSidebarPanel({
   voiceSettingsPending,
 }: Pick<
   RoomPageViewProps,
+  | "analysisProfilePending"
   | "analysisTogglePending"
   | "isZh"
   | "language"
@@ -1015,6 +1183,7 @@ function RoomSidebarPanel({
   | "onToggleMicSelector"
   | "onTogglePublicRoom"
   | "onToggleRealtimeAnalysis"
+  | "onUpdateAnalysisProfile"
   | "onUpdateRoomTranscriptionLanguage"
   | "onUpdateVoiceSource"
   | "onUpdateVoiceTranscriptionProvider"
@@ -1034,7 +1203,6 @@ function RoomSidebarPanel({
     "public" | "transcriptionLanguage" | "voice" | "analysis" | null
   >(null);
   const publicRoomOwnerLocked = !roomMeta.isCreator;
-  const analysisOwnerLocked = !roomMeta.isCreator;
   const selectedLabel = selectedDevice
     ? selectedDevice.label ||
       (isZh
@@ -1067,25 +1235,6 @@ function RoomSidebarPanel({
 
   return (
     <>
-      <div className="sidebar-section">
-        <h4>{t("房间信息", "Room Info")}</h4>
-        <div className="key-status-grid" style={{ fontSize: "0.8rem" }}>
-          <span>{t("状态", "Status")}：{getRoomStatusLabel(roomMeta.status, t)}</span>
-          <span>
-            {t("可见性", "Visibility")}：
-            {roomMeta.isPublic ? t("公开", "Public") : t("仅成员可见", "Members only")}
-          </span>
-          {roomMeta.sourceUrl ? (
-            <span>
-              {t("来源", "Source")}：
-              <a href={roomMeta.sourceUrl} target="_blank" rel="noreferrer" style={{ wordBreak: "break-all" }}>
-                {roomMeta.sourceUrl}
-              </a>
-            </span>
-          ) : null}
-        </div>
-      </div>
-
       <div className="sidebar-section">
         <h4>{t("实时比分", "Real-time Score")}</h4>
         <div className="score-card">
@@ -1341,56 +1490,17 @@ function RoomSidebarPanel({
             )}
           </div>
 
-          <div className="provider-tooltip">
-            {ownerOnlyHintTarget === "analysis" ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
-            <div className="room-status provider-chip provider-chip-panel" tabIndex={0}>
-              <div className="provider-chip-main">
-                <span className="provider-chip-label">{t("大模型分析", "LLM Analysis")}</span>
-                <strong className="provider-chip-value">
-                  {getAnalysisProviderLabel(roomMeta.providers.analysis, language)}
-                </strong>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={roomMeta.analysisEnabled}
-                aria-disabled={analysisOwnerLocked || analysisTogglePending || roomMeta.status === "ENDED"}
-                aria-label={t("切换实时大模型分析", "Toggle realtime LLM analysis")}
-                className={`provider-chip-switch ${roomMeta.analysisEnabled ? "active" : ""}`}
-                title={analysisOwnerLocked ? ownerOnlyMessage : undefined}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (analysisOwnerLocked) {
-                    notifyOwnerOnlySettingFor("analysis");
-                    return;
-                  }
-                  onToggleRealtimeAnalysis();
-                }}
-                disabled={analysisTogglePending || roomMeta.status === "ENDED"}
-              >
-                <span className="provider-chip-switch-track">
-                  <span className="provider-chip-switch-thumb" />
-                </span>
-                <span className="provider-chip-switch-text">
-                  {analysisTogglePending
-                    ? "..."
-                    : roomMeta.analysisEnabled
-                      ? t("开", "On")
-                      : t("关", "Off")}
-                </span>
-              </button>
-            </div>
-            <div className="provider-popover" role="tooltip">
-              <div className="provider-popover-title">{t("大模型分析", "LLM Analysis")}</div>
-              {getAnalysisProviderDetails(roomMeta.providers.analysis, language).map((item) => (
-                <div key={`analysis-${item.label}`} className="provider-popover-row">
-                  <span className="provider-popover-label">{item.label}</span>
-                  <strong className="provider-popover-value">{item.value}</strong>
-                </div>
-              ))}
-              {analysisOwnerLocked ? <p className="provider-popover-hint">{ownerOnlyMessage}</p> : null}
-            </div>
-          </div>
+          <AnalysisProviderPopover
+            analysisProfilePending={analysisProfilePending}
+            analysisTogglePending={analysisTogglePending}
+            language={language}
+            onOwnerOnlySettingAttempt={() => notifyOwnerOnlySettingFor("analysis")}
+            onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
+            onUpdateAnalysisProfile={onUpdateAnalysisProfile}
+            roomMeta={roomMeta}
+            showOwnerOnlyHint={ownerOnlyHintTarget === "analysis"}
+            t={t}
+          />
         </div>
       </div>
     </>
@@ -1399,6 +1509,7 @@ function RoomSidebarPanel({
 
 export function RoomPageView({
   activeStatusTooltip,
+  analysisProfilePending,
   analysisTogglePending,
   analysisViewState,
   audioContainerRef,
@@ -1443,6 +1554,7 @@ export function RoomPageView({
   onTogglePublicRoom,
   onToggleRawMessage,
   onToggleRealtimeAnalysis,
+  onUpdateAnalysisProfile,
   onUpdateRoomTranscriptionLanguage,
   onUpdateVoiceSource,
   onUpdateVoiceTranscriptionProvider,
@@ -1502,19 +1614,21 @@ export function RoomPageView({
   }, [activeStatusTooltip, onCloseActiveStatusTooltip]);
 
   const sidebarContent = (
-    <RoomSidebarPanel
-      analysisTogglePending={analysisTogglePending}
-      isZh={isZh}
-      language={language}
+        <RoomSidebarPanel
+          analysisProfilePending={analysisProfilePending}
+          analysisTogglePending={analysisTogglePending}
+          isZh={isZh}
+          language={language}
       micDevices={micDevices}
       micSelectorOpen={micSelectorOpen}
       micVolume={micVolume}
       onCloseMicSelector={onCloseMicSelector}
       onSelectMic={onSelectMic}
-      onToggleMicSelector={onToggleMicSelector}
-      onTogglePublicRoom={onTogglePublicRoom}
-      onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
-      onUpdateRoomTranscriptionLanguage={onUpdateRoomTranscriptionLanguage}
+          onToggleMicSelector={onToggleMicSelector}
+          onTogglePublicRoom={onTogglePublicRoom}
+          onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
+          onUpdateAnalysisProfile={onUpdateAnalysisProfile}
+          onUpdateRoomTranscriptionLanguage={onUpdateRoomTranscriptionLanguage}
       onUpdateVoiceSource={onUpdateVoiceSource}
       onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
       overallInsights={overallInsights}

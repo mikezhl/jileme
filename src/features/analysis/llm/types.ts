@@ -1,5 +1,6 @@
 import type { ResolvedConversationLlmRuntime } from "@/lib/llm-provider-keys";
 import type { RuntimeSource } from "@/lib/llm-provider-keys";
+import type { ConversationOutputLanguage } from "@/lib/room-analysis-profile";
 
 export type RealtimeConversationInput = {
   roomId: string;
@@ -18,6 +19,7 @@ export type RealtimeConversationLlmInvocation = {
   mode: "realtime";
   style: string;
   prompt: string;
+  outputLanguage: ConversationOutputLanguage;
   input: RealtimeConversationInput;
   runtime: ResolvedConversationLlmRuntime;
 };
@@ -26,6 +28,7 @@ export type SummaryConversationLlmInvocation = {
   mode: "summary";
   style: string;
   prompt: string;
+  outputLanguage: ConversationOutputLanguage;
   input: SummaryConversationInput;
   runtime: ResolvedConversationLlmRuntime;
 };

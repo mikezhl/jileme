@@ -1,36 +1,28 @@
-import realtimeDefaultPrompt from "./realtime/default";
-import summaryDefaultPrompt from "./summary/default";
+import type { ConversationOutputLanguage, RoomAnalysisProfilePreference } from "@/lib/room-analysis-profile";
+
+import buildRealtimeDefaultPrompt from "./realtime/default";
+import buildRealtimeHumorPrompt from "./realtime/humor";
+import buildSummaryDefaultPrompt from "./summary/default";
+import buildSummaryHumorPrompt from "./summary/humor";
 
 export type PromptMode = "realtime" | "summary";
 
-const promptRegistry: Record<PromptMode, Record<string, string>> = {
+type PromptBuilder = (outputLanguage: ConversationOutputLanguage) => string;
+
+const promptRegistry: Record<PromptMode, Record<RoomAnalysisProfilePreference, PromptBuilder>> = {
   realtime: {
-    default_cn: realtimeDefaultPrompt,
+    default: buildRealtimeDefaultPrompt,
+    humor: buildRealtimeHumorPrompt,
   },
   summary: {
-    default_cn: summaryDefaultPrompt,
+    default: buildSummaryDefaultPrompt,
+    humor: buildSummaryHumorPrompt,
   },
 };
 
-const promptAliases: Record<PromptMode, Record<string, string>> = {
-  realtime: {
-    default: "default_cn",
-    coach: "default_cn",
-    coach_cn: "default_cn",
-  },
-  summary: {
-    default: "default_cn",
-    strategic: "default_cn",
-    strategic_cn: "default_cn",
-  },
-};
+const defaultPromptProfile: RoomAnalysisProfilePreference = "default";
 
-const defaultPromptStyles: Record<PromptMode, string> = {
-  realtime: "default_cn",
-  summary: "default_cn",
-};
-
-function normalizeStyle(raw: string | null | undefined) {
+function normalizeProfile(raw: string | null | undefined) {
   const normalized = raw?.trim().toLowerCase();
   if (!normalized) {
     return "";
@@ -40,23 +32,40 @@ function normalizeStyle(raw: string | null | undefined) {
 }
 
 export type PromptResolution = {
-  style: string;
+  profile: RoomAnalysisProfilePreference;
   prompt: string;
+  outputLanguage: ConversationOutputLanguage;
   fallbackUsed: boolean;
 };
 
-export function resolvePromptTemplate(mode: PromptMode, requestedStyle: string | null | undefined): PromptResolution {
+export function resolvePromptProfile(
+  requestedProfile: string | null | undefined,
+): RoomAnalysisProfilePreference {
+  const normalizedProfile = normalizeProfile(requestedProfile);
+  const registry = promptRegistry.realtime;
+
+  return normalizedProfile in registry
+    ? (normalizedProfile as RoomAnalysisProfilePreference)
+    : defaultPromptProfile;
+}
+
+export function resolvePromptTemplate(
+  mode: PromptMode,
+  requestedProfile: string | null | undefined,
+  outputLanguage: ConversationOutputLanguage,
+): PromptResolution {
   const registry = promptRegistry[mode];
-  const aliases = promptAliases[mode];
-  const normalizedStyle = normalizeStyle(requestedStyle);
-  const style = registry[normalizedStyle]
-    ? normalizedStyle
-    : aliases[normalizedStyle] ?? defaultPromptStyles[mode];
-  const prompt = registry[style];
+  const normalizedProfile = normalizeProfile(requestedProfile);
+  const profile =
+    normalizedProfile in registry
+      ? (normalizedProfile as RoomAnalysisProfilePreference)
+      : defaultPromptProfile;
+  const prompt = registry[profile](outputLanguage);
 
   return {
-    style,
+    profile,
     prompt,
-    fallbackUsed: normalizedStyle !== style,
+    outputLanguage,
+    fallbackUsed: normalizedProfile !== profile,
   };
 }

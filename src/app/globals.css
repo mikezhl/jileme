@@ -927,7 +927,7 @@ a:focus-visible {
 }
 
 .room-sidebar {
-  width: 320px;
+  width: 360px;
   border-left: 1px solid var(--line);
   background: var(--card);
   display: flex;

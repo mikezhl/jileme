@@ -2,7 +2,7 @@ import { RoomTranscriptionLanguage as PrismaRoomTranscriptionLanguage } from "@p
 
 import { type UiLanguage } from "./ui-language";
 
-export const ROOM_TRANSCRIPTION_LANGUAGE_PREFERENCES = ["zh", "en", "auto"] as const;
+export const ROOM_TRANSCRIPTION_LANGUAGE_PREFERENCES = ["zh", "en"] as const;
 
 export type RoomTranscriptionLanguagePreference =
   (typeof ROOM_TRANSCRIPTION_LANGUAGE_PREFERENCES)[number];
@@ -11,7 +11,7 @@ export function normalizeRoomTranscriptionLanguagePreference(
   value: string | null | undefined,
 ): RoomTranscriptionLanguagePreference | null {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "zh" || normalized === "en" || normalized === "auto") {
+  if (normalized === "zh" || normalized === "en") {
     return normalized;
   }
 
@@ -27,10 +27,6 @@ export function toPrismaRoomTranscriptionLanguage(
   if (value === "en") {
     return PrismaRoomTranscriptionLanguage.EN;
   }
-  if (value === "auto") {
-    return PrismaRoomTranscriptionLanguage.AUTO;
-  }
-
   return null;
 }
 
@@ -43,10 +39,6 @@ export function fromPrismaRoomTranscriptionLanguage(
   if (value === PrismaRoomTranscriptionLanguage.EN) {
     return "en";
   }
-  if (value === PrismaRoomTranscriptionLanguage.AUTO) {
-    return "auto";
-  }
-
   return null;
 }
 
@@ -57,13 +49,8 @@ export function getDefaultRoomTranscriptionLanguageForUiLanguage(
 }
 
 export function inferRoomTranscriptionLanguagePreference(options: {
-  detectLanguage?: boolean;
   language?: string | null;
 }): RoomTranscriptionLanguagePreference | null {
-  if (options.detectLanguage) {
-    return "auto";
-  }
-
   const normalized = options.language?.trim().toLowerCase();
   if (!normalized) {
     return null;

@@ -1,10 +1,16 @@
-import { getConversationAnalysisPromptProfiles } from "@/features/analysis/llm/core";
+import { resolveConversationAnalysisPromptSelection } from "@/features/analysis/llm/core";
+import type { TranscriptionProviderName } from "@/features/transcription/core/providers";
 import type { RoomVoiceRuntime } from "@/features/transcription/core/runtime";
 import type { ResolvedConversationLlmRuntime, RuntimeSource } from "./llm-provider-keys";
+import {
+  getDefaultRoomAnalysisProfilePreference,
+  ROOM_ANALYSIS_PROFILE_PREFERENCES,
+  type ConversationOutputLanguage,
+  type RoomAnalysisProfilePreference,
+} from "./room-analysis-profile";
 import type { KeySource } from "./provider-sources";
 import type { RoomTranscriptionLanguagePreference } from "./room-transcription-language";
 import type { RoomVoiceSourcePreference } from "./room-voice-preferences";
-import type { TranscriptionProviderName } from "@/features/transcription/core/providers";
 
 export type ProviderOwnerKind = "platform" | "user" | "builtin" | "unavailable";
 
@@ -56,9 +62,14 @@ export type AnalysisProviderModule = {
   model: string | null;
   ready: boolean;
   error: string | null;
-  profiles: {
-    realtime: string;
-    summary: string;
+  selection: {
+    profilePreference: RoomAnalysisProfilePreference | null;
+    selectedProfile: RoomAnalysisProfilePreference;
+    profileOptions: Array<{
+      value: RoomAnalysisProfilePreference;
+      available: boolean;
+    }>;
+    outputLanguage: ConversationOutputLanguage;
   };
 };
 
@@ -121,24 +132,50 @@ export function buildRoomVoiceProviderModule(
   };
 }
 
+export function buildRoomAnalysisProviderModule(
+  llmRuntime: ResolvedConversationLlmRuntime,
+  ownerUsername: string | null,
+  options?: {
+    profilePreference?: RoomAnalysisProfilePreference | null;
+    transcriptionLanguagePreference?: RoomTranscriptionLanguagePreference | null;
+  },
+): AnalysisProviderModule {
+  const promptSelection = resolveConversationAnalysisPromptSelection({
+    profilePreference: options?.profilePreference ?? getDefaultRoomAnalysisProfilePreference(),
+    transcriptionLanguagePreference: options?.transcriptionLanguagePreference ?? null,
+  });
+
+  return {
+    providedBy: resolveProviderOwnerFromSource(llmRuntime.source, ownerUsername),
+    provider: llmRuntime.provider,
+    source: llmRuntime.source,
+    credentialMask: llmRuntime.apiKeyMask,
+    model: llmRuntime.model,
+    ready: llmRuntime.configured,
+    error: llmRuntime.error,
+    selection: {
+      profilePreference: options?.profilePreference ?? null,
+      selectedProfile: promptSelection.profile,
+      profileOptions: ROOM_ANALYSIS_PROFILE_PREFERENCES.map((value) => ({
+        value,
+        available: true,
+      })),
+      outputLanguage: promptSelection.outputLanguage,
+    },
+  };
+}
+
 export function buildRoomProviderModules(
   voiceRuntime: RoomVoiceRuntime,
   llmRuntime: ResolvedConversationLlmRuntime,
   ownerUsername: string | null,
+  options?: {
+    profilePreference?: RoomAnalysisProfilePreference | null;
+    transcriptionLanguagePreference?: RoomTranscriptionLanguagePreference | null;
+  },
 ): RoomProviderModules {
-  const profiles = getConversationAnalysisPromptProfiles();
-
   return {
     voice: buildRoomVoiceProviderModule(voiceRuntime, ownerUsername),
-    analysis: {
-      providedBy: resolveProviderOwnerFromSource(llmRuntime.source, ownerUsername),
-      provider: llmRuntime.provider,
-      source: llmRuntime.source,
-      credentialMask: llmRuntime.apiKeyMask,
-      model: llmRuntime.model,
-      ready: llmRuntime.configured,
-      error: llmRuntime.error,
-      profiles,
-    },
+    analysis: buildRoomAnalysisProviderModule(llmRuntime, ownerUsername, options),
   };
 }

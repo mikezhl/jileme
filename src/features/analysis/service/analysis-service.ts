@@ -9,8 +9,10 @@ import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/r
 import { createRoomServiceClient, publishChatMessageViaLivekit } from "@/lib/livekit-chat-relay";
 import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
 import { toChatMessage } from "@/lib/messages";
+import { fromPrismaRoomAnalysisProfile } from "@/lib/room-analysis-profile";
 import { getRoomNameFromAnalysisPayload } from "@/lib/room-name";
 import { prisma } from "@/lib/prisma";
+import { fromPrismaRoomTranscriptionLanguage } from "@/lib/room-transcription-language";
 import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { recordLlmUsageForOwner } from "@/lib/usage-stats";
 import { isRealtimeAnalysisEnabledForRoom } from "./analysis-control";
@@ -110,6 +112,7 @@ export async function executeRealtimeAnalysisForRoomRef(roomRefId: string): Prom
       name: true,
       status: true,
       analysisEnabled: true,
+      analysisProfilePreference: true,
       createdById: true,
       voiceSourcePreference: true,
       transcriptionProviderPreference: true,
@@ -164,7 +167,12 @@ export async function executeRealtimeAnalysisForRoomRef(roomRefId: string): Prom
     speakerMap: compacted.speakerMap,
     historyConversation: compacted.historyConversation,
     currentRoundConversation: compacted.currentRoundConversation,
-  }, room.createdById, llmRuntime);
+  }, room.createdById, llmRuntime, {
+    profilePreference: fromPrismaRoomAnalysisProfile(room.analysisProfilePreference),
+    transcriptionLanguagePreference: fromPrismaRoomTranscriptionLanguage(
+      room.transcriptionLanguagePreference,
+    ),
+  });
   await recordLlmUsageForOwner({
     ownerUserId: room.createdById,
     source: llmResult.source,
@@ -258,6 +266,7 @@ export async function executeFinalSummaryForRoomRef(roomRefId: string): Promise<
       id: true,
       roomId: true,
       name: true,
+      analysisProfilePreference: true,
       createdById: true,
       voiceSourcePreference: true,
       transcriptionProviderPreference: true,
@@ -293,7 +302,12 @@ export async function executeFinalSummaryForRoomRef(roomRefId: string): Promise<
     roomId: room.roomId,
     speakerMap: compacted.speakerMap,
     fullConversation: compacted.fullConversation,
-  }, room.createdById, llmRuntime);
+  }, room.createdById, llmRuntime, {
+    profilePreference: fromPrismaRoomAnalysisProfile(room.analysisProfilePreference),
+    transcriptionLanguagePreference: fromPrismaRoomTranscriptionLanguage(
+      room.transcriptionLanguagePreference,
+    ),
+  });
   await recordLlmUsageForOwner({
     ownerUserId: room.createdById,
     source: llmResult.source,

@@ -8,6 +8,10 @@ import {
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
 import { type ChatMessage } from "@/lib/chat-types";
 import { getRoomNameFromAnalysisContent } from "@/lib/room-name";
+import {
+  type ConversationOutputLanguage,
+  type RoomAnalysisProfilePreference,
+} from "@/lib/room-analysis-profile";
 import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { toDateLocale, type UiLanguage } from "@/lib/ui-language";
@@ -60,9 +64,14 @@ export type AnalysisProviderState = {
   model: string | null;
   ready: boolean;
   error: string | null;
-  profiles: {
-    realtime: string;
-    summary: string;
+  selection: {
+    profilePreference: RoomAnalysisProfilePreference | null;
+    selectedProfile: RoomAnalysisProfilePreference;
+    profileOptions: Array<{
+      value: RoomAnalysisProfilePreference;
+      available: boolean;
+    }>;
+    outputLanguage: ConversationOutputLanguage;
   };
 };
 
@@ -272,9 +281,20 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
         model: null,
         ready: true,
         error: null,
-        profiles: {
-          realtime: "default_cn",
-          summary: "default_cn",
+        selection: {
+          profilePreference: "default",
+          selectedProfile: "default",
+          profileOptions: [
+            {
+              value: "default",
+              available: true,
+            },
+            {
+              value: "humor",
+              available: true,
+            },
+          ],
+          outputLanguage: "zh",
         },
       },
     },
@@ -489,6 +509,17 @@ export function getAnalysisProviderLabel(
   return formatProviderOwner(analysis.providedBy, language);
 }
 
+export function formatAnalysisProfileValue(
+  value: RoomAnalysisProfilePreference | null | undefined,
+  language: UiLanguage,
+) {
+  if (value === "humor") {
+    return language === "zh" ? "幽默" : "Humor";
+  }
+
+  return language === "zh" ? "默认" : "Default";
+}
+
 export function getVoiceProviderDetails(voice: VoiceProviderState, language: UiLanguage) {
   const details = [
     {
@@ -526,14 +557,6 @@ export function getAnalysisProviderDetails(
     {
       label: language === "zh" ? "实现" : "Implementation",
       value: formatProviderName(analysis.provider, language),
-    },
-    {
-      label: language === "zh" ? "实时 Profile" : "Realtime profile",
-      value: analysis.profiles.realtime,
-    },
-    {
-      label: language === "zh" ? "总结 Profile" : "Summary profile",
-      value: analysis.profiles.summary,
     },
   ];
 

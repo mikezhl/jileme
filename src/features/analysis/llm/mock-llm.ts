@@ -12,6 +12,7 @@ export class MockConversationLlmProvider implements ConversationLlmProvider {
       content: {
         mode: invocation.mode,
         style: invocation.style,
+        outputLanguage: invocation.outputLanguage,
         prompt: invocation.prompt,
         input: invocation.input,
       },

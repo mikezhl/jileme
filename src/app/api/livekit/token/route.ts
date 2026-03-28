@@ -16,6 +16,7 @@ import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
 import { getRoomParticipationSnapshot } from "@/lib/room-members";
 import { buildRoomProviderModules } from "@/lib/provider-modules";
 import { prisma } from "@/lib/prisma";
+import { fromPrismaRoomAnalysisProfile } from "@/lib/room-analysis-profile";
 import { assertRoomOwnerActiveOrThrow } from "@/lib/room-presence";
 import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { RoomAccessError, getAccessibleRoomOrThrow } from "@/lib/rooms";
@@ -202,7 +203,11 @@ export async function POST(request: Request) {
     });
 
     const token = await accessToken.toJwt();
-    const providers = buildRoomProviderModules(voiceRuntime, llmRuntime, owner?.username ?? null);
+    const roomVoicePreferences = getRoomVoiceRuntimePreferences(room);
+    const providers = buildRoomProviderModules(voiceRuntime, llmRuntime, owner?.username ?? null, {
+      profilePreference: fromPrismaRoomAnalysisProfile(room.analysisProfilePreference),
+      transcriptionLanguagePreference: roomVoicePreferences.transcriptionLanguagePreference,
+    });
     appendTranscriberRuntimeLog("transcriber-token-route", "issued-livekit-token", {
       roomId,
       userId: user.id,

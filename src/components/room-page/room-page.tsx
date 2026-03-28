@@ -37,6 +37,7 @@ export default function RoomPageClient({
   const [activeStatusTooltip, setActiveStatusTooltip] = useState<ActiveStatusTooltipState>(null);
 
   const {
+    analysisProfilePending,
     analysisTogglePending,
     audioContainerRef,
     connectRoom,
@@ -61,6 +62,7 @@ export default function RoomPageClient({
     togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
+    updateAnalysisProfile,
     updateVoiceSettings,
     voiceCallStarting,
     voiceSettingsPending,
@@ -167,6 +169,7 @@ export default function RoomPageClient({
   return (
     <RoomPageView
       activeStatusTooltip={activeStatusTooltip}
+      analysisProfilePending={analysisProfilePending}
       analysisTogglePending={analysisTogglePending}
       analysisViewState={analysisViewState}
       audioContainerRef={audioContainerRef}
@@ -234,6 +237,9 @@ export default function RoomPageClient({
       }}
       onUpdateRoomTranscriptionLanguage={(transcriptionLanguage) => {
         void updateVoiceSettings({ transcriptionLanguage });
+      }}
+      onUpdateAnalysisProfile={(profile) => {
+        void updateAnalysisProfile(profile);
       }}
       onUpdateVoiceSource={(source) => {
         void updateVoiceSettings({ source });
