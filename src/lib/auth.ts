@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { SYSTEM_USERNAME } from "@/lib/constants";
 import { optionalEnv } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
@@ -39,9 +40,16 @@ export function normalizeUsername(input?: string | null) {
   return input?.trim().toLowerCase() ?? "";
 }
 
+export function isReservedUsername(username: string) {
+  return username === SYSTEM_USERNAME;
+}
+
 export function validateUsername(username: string) {
   if (!/^[a-z0-9_]{3,32}$/.test(username)) {
     return "username must be 3-32 chars and contain only lowercase letters, numbers, or underscore";
+  }
+  if (isReservedUsername(username)) {
+    return "username is reserved";
   }
   return null;
 }

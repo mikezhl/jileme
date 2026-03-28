@@ -57,6 +57,7 @@ export default async function RoomPage({ params }: RoomPageProps) {
           room={{
             roomId: publicRoom.roomId,
             roomName: publicRoom.name,
+            sourceUrl: publicRoom.sourceUrl,
             status: publicRoom.status,
             updatedAt: publicRoom.updatedAt.toISOString(),
             endedAt: publicRoom.endedAt?.toISOString() ?? null,

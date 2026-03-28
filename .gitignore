@@ -53,3 +53,11 @@ openspec/
 
 # Logs
 logs/
+
+# data
+data/**/*.mp3
+data/**/*.m4a
+data/**/test.json
+data/**/test.srt
+data/**/test.tsv
+data/**/test.vtt

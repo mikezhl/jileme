@@ -396,6 +396,7 @@ export function useRoomSession({
 
     setRoomMeta({
       roomName: payload.room.roomName,
+      sourceUrl: payload.room.sourceUrl,
       status: payload.room.status,
       isPublic: payload.room.isPublic,
       analysisEnabled: payload.room.analysisEnabled,

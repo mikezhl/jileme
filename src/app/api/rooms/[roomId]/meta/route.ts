@@ -44,6 +44,7 @@ export async function GET(_request: Request, context: RouteContext) {
       room: {
         roomId: runtimeInfo.room.roomId,
         roomName: runtimeInfo.room.name,
+        sourceUrl: runtimeInfo.room.sourceUrl,
         status: runtimeInfo.room.status,
         isPublic: runtimeInfo.room.isPublic,
         analysisEnabled: runtimeInfo.room.analysisEnabled,

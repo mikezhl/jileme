@@ -100,6 +100,7 @@ export type RoomMetaResponse = {
   room: {
     roomId: string;
     roomName: string | null;
+    sourceUrl: string | null;
     status: "ACTIVE" | "ENDED";
     isPublic: boolean;
     analysisEnabled: boolean;
@@ -136,6 +137,7 @@ export type TranscriptionState = "idle" | "starting" | "ready" | "disabled";
 
 export type RoomMetaState = {
   roomName: string | null;
+  sourceUrl: string | null;
   status: "ACTIVE" | "ENDED";
   isPublic: boolean;
   analysisEnabled: boolean;
@@ -200,6 +202,7 @@ export const ANALYSIS_SIDE_ORDER: RealtimeAnalysisSide[] = ["A", "B"];
 export function createInitialRoomMetaState(initialRoomName: string | null): RoomMetaState {
   return {
     roomName: initialRoomName,
+    sourceUrl: null,
     status: "ACTIVE",
     isPublic: false,
     analysisEnabled: true,

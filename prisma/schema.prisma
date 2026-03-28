@@ -44,6 +44,7 @@ model Room {
   id                             String                @id @default(cuid())
   roomId                         String                @unique
   name                           String?
+  sourceUrl                      String?
   status                         RoomStatus            @default(ACTIVE)
   isPublic                       Boolean               @default(false)
   analysisEnabled                Boolean               @default(true)

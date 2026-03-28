@@ -12,6 +12,7 @@ import {
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
+import { getArchiveMessageSide } from "@/lib/archive-room";
 import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
 import { type RoomSpeakerMode } from "@/lib/room-speaker";
@@ -237,6 +238,27 @@ function AnalysisMessage({
   }
 }
 
+function ArchiveOtherMessage({
+  language,
+  message,
+  t,
+}: Pick<RoomPageViewProps, "language" | "t"> & { message: ChatMessage }) {
+  return (
+    <article className="bubble analysis announcement">
+      <header className="bubble-meta">
+        <strong>{message.senderName || t("其它", "Other")}</strong>
+        <span className="bubble-source">{message.type === "transcript" ? t("音", "V") : t("文", "T")}</span>
+        <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
+      </header>
+      <p>{message.content}</p>
+    </article>
+  );
+}
+
+function getRoomStatusLabel(status: RoomMetaState["status"], t: RoomPageTranslate) {
+  return status === "ENDED" ? t("已结束", "Ended") : t("进行中", "Active");
+}
+
 function getRoomMemberRoleLabel(
   member: RoomMetaState["members"][number],
   t: RoomPageTranslate,
@@ -266,6 +288,16 @@ function getRoomMemberStatusLabel(
   t: RoomPageTranslate,
 ) {
   return member.isOnline ? t("在线", "Online") : t("离线", "Offline");
+}
+
+function isSpecialArchiveRoomMeta(roomMeta: RoomMetaState) {
+  const ownerMember = roomMeta.members.find((member) => member.isOwner);
+  return (
+    roomMeta.status === "ENDED" &&
+    roomMeta.isPublic &&
+    Boolean(roomMeta.sourceUrl) &&
+    ownerMember?.username === "system"
+  );
 }
 
 function RoomMembersSummary({
@@ -356,6 +388,7 @@ function RoomMembersSummary({
 
   const ownerMember = roomMeta.members.find((member) => member.isOwner) ?? roomMeta.members[0];
   const ownerStatusLabel = getRoomMemberStatusLabel(ownerMember, t);
+  const isSpecialArchiveRoom = isSpecialArchiveRoomMeta(roomMeta);
   const mobileMembersPanelId = "room-members-mobile-panel";
   const mobileMembersFlyoutStyle =
     mobileMembersFlyoutShift === 0
@@ -371,14 +404,17 @@ function RoomMembersSummary({
         {roomMeta.members.map((member) => {
           const roleLabel = getRoomMemberRoleLabel(member, t);
           const statusLabel = getRoomMemberStatusLabel(member, t);
+          const titleLabel = isSpecialArchiveRoom
+            ? `@${member.username} | ${statusLabel}`
+            : `${roleLabel} | @${member.username} | ${statusLabel}`;
 
           return (
             <span
               key={member.userId}
               className={`room-member-inline ${member.isOnline ? "online" : "offline"}`}
-              title={`${roleLabel} | @${member.username} | ${statusLabel}`}
+              title={titleLabel}
             >
-              <span className="room-member-inline-role">{roleLabel}</span>
+              {isSpecialArchiveRoom ? null : <span className="room-member-inline-role">{roleLabel}</span>}
               <span className="room-member-inline-name">@{member.username}</span>
               <span
                 className={`room-member-inline-status ${member.isOnline ? "online" : "offline"}`}
@@ -442,26 +478,31 @@ function RoomMembersSummary({
                 <span className="room-members-flyout-title">
                   {t("房间成员", "Room members")}
                 </span>
-                <p className="room-members-flyout-hint">
-                  {t(
-                    "前两位进入的成员为辩手A / 辩手B，其余成员旁听只读。",
-                    "The first two members become Debater A and Debater B. Everyone after that is read-only.",
-                  )}
-                </p>
+                {isSpecialArchiveRoom ? null : (
+                  <p className="room-members-flyout-hint">
+                    {t(
+                      "前两位进入的成员为辩手A / 辩手B，其余成员旁听只读。",
+                      "The first two members become Debater A and Debater B. Everyone after that is read-only.",
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="room-members-flyout-list">
                 {roomMeta.members.map((member) => {
                   const roleLabel = getRoomMemberRoleLabel(member, t);
                   const statusLabel = getRoomMemberStatusLabel(member, t);
+                  const titleLabel = isSpecialArchiveRoom
+                    ? `@${member.username} | ${statusLabel}`
+                    : `${roleLabel} | @${member.username} | ${statusLabel}`;
 
                   return (
                     <div key={`mobile-${member.userId}`} className="room-members-flyout-row">
                       <span
                         className={`room-member-inline ${member.isOnline ? "online" : "offline"}`}
-                        title={`${roleLabel} | @${member.username} | ${statusLabel}`}
+                        title={titleLabel}
                       >
-                        <span className="room-member-inline-role">{roleLabel}</span>
+                        {isSpecialArchiveRoom ? null : <span className="room-member-inline-role">{roleLabel}</span>}
                         <span className="room-member-inline-name">@{member.username}</span>
                         <span
                           className={`room-member-inline-status ${member.isOnline ? "online" : "offline"}`}
@@ -1026,6 +1067,25 @@ function RoomSidebarPanel({
 
   return (
     <>
+      <div className="sidebar-section">
+        <h4>{t("房间信息", "Room Info")}</h4>
+        <div className="key-status-grid" style={{ fontSize: "0.8rem" }}>
+          <span>{t("状态", "Status")}：{getRoomStatusLabel(roomMeta.status, t)}</span>
+          <span>
+            {t("可见性", "Visibility")}：
+            {roomMeta.isPublic ? t("公开", "Public") : t("仅成员可见", "Members only")}
+          </span>
+          {roomMeta.sourceUrl ? (
+            <span>
+              {t("来源", "Source")}：
+              <a href={roomMeta.sourceUrl} target="_blank" rel="noreferrer" style={{ wordBreak: "break-all" }}>
+                {roomMeta.sourceUrl}
+              </a>
+            </span>
+          ) : null}
+        </div>
+      </div>
+
       <div className="sidebar-section">
         <h4>{t("实时比分", "Real-time Score")}</h4>
         <div className="score-card">
@@ -1629,27 +1689,35 @@ export function RoomPageView({
                   );
                 }
 
-                const announcement = message.type === "summary";
-                const own = announcement ? false : isOwnMessage(message, userId, username);
+                const archiveSide = getArchiveMessageSide(message.participantId);
+                const archiveOtherMessage = archiveSide === "other";
+                const announcement = message.type === "summary" || archiveOtherMessage;
+                const ownMessage = announcement ? false : isOwnMessage(message, userId, username);
+                const alignSelf = archiveSide === "B" ? true : archiveSide === "A" ? false : ownMessage;
+                const rowClass = announcement ? "announcement" : alignSelf ? "self" : "other";
+                const messageTitle =
+                  message.type === "summary"
+                    ? t("最终总结", "Final Summary")
+                    : archiveSide === null && ownMessage
+                      ? t("我", "Me")
+                      : message.senderName;
+
                 return (
-                  <div
-                    key={message.id}
-                    className={`message-row ${announcement ? "announcement" : own ? "self" : "other"}`}
-                  >
-                    <article
-                      className={`bubble ${message.type} ${announcement ? "announcement" : own ? "self" : "other"}`}
-                    >
-                      <header className="bubble-meta">
-                        <strong>
-                          {announcement ? t("最终总结", "Final Summary") : own ? t("我", "Me") : message.senderName}
-                        </strong>
-                        <span className="bubble-source">
-                          {message.type === "transcript" ? t("音", "V") : t("文", "T")}
-                        </span>
-                        <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
-                      </header>
-                      <p>{message.content}</p>
-                    </article>
+                  <div key={message.id} className={`message-row ${rowClass}`}>
+                    {archiveOtherMessage ? (
+                      <ArchiveOtherMessage language={language} message={message} t={t} />
+                    ) : (
+                      <article className={`bubble ${message.type} ${rowClass}`}>
+                        <header className="bubble-meta">
+                          <strong>{messageTitle}</strong>
+                          <span className="bubble-source">
+                            {message.type === "transcript" ? t("音", "V") : t("文", "T")}
+                          </span>
+                          <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
+                        </header>
+                        <p>{message.content}</p>
+                      </article>
+                    )}
                   </div>
                 );
               })

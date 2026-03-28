@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
+import { getArchiveMessageSide } from "@/lib/archive-room";
 import { type ChatMessage } from "@/lib/chat-types";
 import { getRoomDisplayName } from "@/lib/room-name";
 
@@ -8,6 +9,7 @@ type PublicRoomReadonlyPageProps = {
   room: {
     roomId: string;
     roomName: string | null;
+    sourceUrl: string | null;
     status: "ACTIVE" | "ENDED";
     updatedAt: string;
     endedAt: string | null;
@@ -49,6 +51,25 @@ function formatMessageTime(value: string) {
 
 function getRoomStatusLabel(status: PublicRoomReadonlyPageProps["room"]["status"]) {
   return status === "ENDED" ? "已结束" : "进行中";
+}
+
+function isSpecialArchivePublicRoom(room: PublicRoomReadonlyPageProps["room"]) {
+  return room.status === "ENDED" && room.ownerUsername === "system" && Boolean(room.sourceUrl);
+}
+
+function getMessageRowClass(message: ChatMessage) {
+  if (message.type === "analysis" || message.type === "summary") {
+    return "announcement";
+  }
+
+  const archiveSide = getArchiveMessageSide(message.participantId);
+  if (archiveSide === "B") {
+    return "self";
+  }
+  if (archiveSide === "other") {
+    return "announcement";
+  }
+  return "other";
 }
 
 function getMessageTitle(message: ChatMessage) {
@@ -217,11 +238,25 @@ function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
   );
 }
 
+function ReadonlyArchiveOtherMessage({ message }: { message: ChatMessage }) {
+  return (
+    <article className="bubble analysis announcement">
+      <header className="bubble-meta">
+        <strong>{getMessageTitle(message)}</strong>
+        <span className="bubble-source">{getMessageSourceLabel(message)}</span>
+        <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+      </header>
+      <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</p>
+    </article>
+  );
+}
+
 export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomReadonlyPageProps) {
   const roomDisplayName = getRoomDisplayName(room.roomName, room.roomId);
   const nextPath = `/${encodeURIComponent(room.roomId)}`;
   const loginHref = `/?auth=login&next=${encodeURIComponent(nextPath)}`;
   const hasEnded = room.status === "ENDED";
+  const hideAnonymousReadonlyNotice = isSpecialArchivePublicRoom(room);
 
   return (
     <main className="room-page">
@@ -288,18 +323,20 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
           </div>
         </header>
 
-        <div
-          className="key-status-grid"
-          style={{
-            width: "calc(100% - 48px)",
-            maxWidth: "800px",
-            margin: "0 auto 16px",
-          }}
-        >
-          <strong>当前为匿名只读浏览</strong>
-          <span>不会建立实时连接，不会加入通信，也不会调用房间运行时接口。</span>
-          <span>{hasEnded ? "房间已结束，仅保留历史内容查看。" : "如需发言、上麦或参与实时对话，请先登录。"}</span>
-        </div>
+        {hideAnonymousReadonlyNotice ? null : (
+          <div
+            className="key-status-grid"
+            style={{
+              width: "calc(100% - 48px)",
+              maxWidth: "800px",
+              margin: "0 auto 16px",
+            }}
+          >
+            <strong>当前为匿名只读浏览</strong>
+            <span>不会建立实时连接，不会加入通信，也不会调用房间运行时接口。</span>
+            <span>{hasEnded ? "房间已结束，仅保留历史内容查看。" : "如需发言、上麦或参与实时对话，请先登录。"}</span>
+          </div>
+        )}
 
         <section className="chat-panel">
           <div className="chat-scroll">
@@ -313,14 +350,16 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
                 return (
                   <div
                     key={message.id}
-                    className={`message-row ${isAnnouncement ? "announcement" : "other"}`}
+                    className={`message-row ${getMessageRowClass(message)}`}
                   >
                     {message.type === "analysis" ? (
                       <ReadonlyAnalysisMessage message={message} />
+                    ) : getArchiveMessageSide(message.participantId) === "other" ? (
+                      <ReadonlyArchiveOtherMessage message={message} />
                     ) : (
                       <article
                         className={`bubble ${message.type} ${
-                          isAnnouncement ? "announcement" : "other"
+                          isAnnouncement ? "announcement" : getMessageRowClass(message)
                         }`}
                       >
                         <header className="bubble-meta">
@@ -364,17 +403,25 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
       </section>
 
       <aside className="room-sidebar">
-        <div className="sidebar-section">
-          <h4>房间信息</h4>
-          <div className="key-status-grid">
-            <span>状态：{getRoomStatusLabel(room.status)}</span>
-            <span>可见性：公开</span>
-            <span>房主：{room.ownerUsername ? `@${room.ownerUsername}` : "未知"}</span>
-            <span>成员：{room.participantCount}</span>
-            <span>消息：{room.messageCount}</span>
-            <span>最近更新：{formatDateTime(room.updatedAt)}</span>
-            {room.endedAt ? <span>结束时间：{formatDateTime(room.endedAt)}</span> : null}
-          </div>
+          <div className="sidebar-section">
+            <h4>房间信息</h4>
+            <div className="key-status-grid">
+              <span>状态：{getRoomStatusLabel(room.status)}</span>
+              <span>可见性：公开</span>
+              <span>房主：{room.ownerUsername ? `@${room.ownerUsername}` : "未知"}</span>
+              <span>成员：{room.participantCount}</span>
+              <span>消息：{room.messageCount}</span>
+              {room.sourceUrl ? (
+                <span>
+                  来源：
+                  <a href={room.sourceUrl} target="_blank" rel="noreferrer" style={{ wordBreak: "break-all" }}>
+                    {room.sourceUrl}
+                  </a>
+                </span>
+              ) : null}
+              <span>最近更新：{formatDateTime(room.updatedAt)}</span>
+              {room.endedAt ? <span>结束时间：{formatDateTime(room.endedAt)}</span> : null}
+            </div>
         </div>
 
         <div className="sidebar-section">
