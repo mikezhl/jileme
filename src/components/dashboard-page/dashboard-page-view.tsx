@@ -2,6 +2,7 @@ import { type UiLanguage } from "@/lib/ui-language";
 
 import { type DashboardTranslate } from "./dashboard-page-support";
 import { AuthModal } from "./sections/auth-modal";
+import { ChangePasswordModal } from "./sections/change-password-modal";
 import { DashboardHeader } from "./sections/dashboard-header";
 import { LivekitSettingsPanel } from "./sections/livekit-settings-panel";
 import { LlmSettingsPanel } from "./sections/llm-settings-panel";
@@ -39,6 +40,7 @@ export function DashboardPageView({
             heroSubtitle={heroSubtitle}
             isAuthenticated={state.isAuthenticated}
             isZh={isZh}
+            onOpenChangePassword={state.openChangePasswordModal}
             onLogout={state.handleLogout}
             onOpenLogin={state.openLoginModal}
             onOpenRegister={state.openRegisterModal}
@@ -150,6 +152,18 @@ export function DashboardPageView({
           onSubmit={state.handleAuthSubmit}
           setAuthForm={state.setAuthForm}
           setAuthMode={state.setAuthMode}
+          t={t}
+        />
+      ) : null}
+
+      {state.changePasswordOpen ? (
+        <ChangePasswordModal
+          changePasswordError={state.changePasswordError}
+          changePasswordForm={state.changePasswordForm}
+          changePasswordLoading={state.changePasswordLoading}
+          onClose={state.closeChangePasswordModal}
+          onSubmit={state.handleChangePasswordSubmit}
+          setChangePasswordForm={state.setChangePasswordForm}
           t={t}
         />
       ) : null}

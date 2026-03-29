@@ -85,6 +85,12 @@ export type AuthFormState = {
   password: string;
 };
 
+export type ChangePasswordFormState = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
 export type DashboardPageClientProps = {
   initialUser: UserInfo | null;
   initialCreatedRooms: RoomSummary[];

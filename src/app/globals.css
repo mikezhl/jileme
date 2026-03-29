@@ -168,6 +168,50 @@ a:focus-visible {
   font-weight: 600;
 }
 
+.user-menu {
+  position: relative;
+}
+
+.user-menu-trigger {
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.user-menu-trigger:hover {
+  background: var(--line);
+}
+
+.user-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 168px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 14px 28px -24px rgba(15, 23, 42, 0.6);
+  display: grid;
+  gap: 4px;
+  z-index: 20;
+}
+
+.user-menu-item {
+  border: none;
+  height: 40px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.user-menu-item:hover {
+  background: var(--surface);
+}
+
 .minimal-main-card {
   border: 1px solid var(--line);
   background: var(--card);

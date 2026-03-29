@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import {
   createSession,
-  isReservedUsername,
   normalizeUsername,
   setSessionCookie,
   verifyPassword,
@@ -24,10 +23,6 @@ export async function POST(request: Request) {
 
     if (!username || !password) {
       return NextResponse.json({ error: "username and password are required" }, { status: 400 });
-    }
-
-    if (isReservedUsername(username)) {
-      return NextResponse.json({ error: "system account cannot login" }, { status: 403 });
     }
 
     const user = await prisma.user.findUnique({

@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
 import { type DashboardTranslate, type UserInfo } from "../dashboard-page-support";
@@ -7,6 +10,7 @@ type DashboardHeaderProps = {
   isAuthenticated: boolean;
   isZh: boolean;
   onLogout: () => Promise<void>;
+  onOpenChangePassword: () => void;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
   onToggleLanguage: () => void;
@@ -19,12 +23,41 @@ export function DashboardHeader({
   isAuthenticated,
   isZh,
   onLogout,
+  onOpenChangePassword,
   onOpenLogin,
   onOpenRegister,
   onToggleLanguage,
   t,
   user,
 }: DashboardHeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <header className="minimal-header">
       <div>
@@ -62,19 +95,47 @@ export function DashboardHeader({
         </button>
 
         {isAuthenticated ? (
-          <>
-            <span className="user-chip">
+          <div className="user-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="user-chip user-menu-trigger"
+              onClick={() => setMenuOpen((current) => !current)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
               <span className="desktop-only">{user?.username}</span>
               <span className="mobile-only">
                 {user?.username?.substring(0, 8)}
                 {user?.username && user.username.length > 8 ? "..." : ""}
               </span>
-            </span>
-            <button type="button" className="ghost-btn" onClick={() => void onLogout()}>
-              <span className="desktop-only">{t("退出登录", "Sign Out")}</span>
-              <span className="mobile-only">{t("退出", "Out")}</span>
             </button>
-          </>
+            {menuOpen ? (
+              <div className="user-menu-panel" role="menu" aria-label={t("用户菜单", "User menu")}>
+                <button
+                  type="button"
+                  className="user-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenChangePassword();
+                  }}
+                >
+                  {t("修改密码", "Change Password")}
+                </button>
+                <button
+                  type="button"
+                  className="user-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void onLogout();
+                  }}
+                >
+                  {t("退出登录", "Sign Out")}
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <>
             <button type="button" className="ghost-btn" onClick={() => onOpenLogin()}>

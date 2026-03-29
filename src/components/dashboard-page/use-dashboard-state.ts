@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { type UiLanguage } from "@/lib/ui-language";
 
 import {
+  type ChangePasswordFormState,
   emptyProviderForm,
   isBlank,
   normalizeNextPath,
@@ -92,6 +93,14 @@ export function useDashboardState({
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [pendingRoomAction, setPendingRoomAction] = useState<RoomAction | null>(null);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState("");
 
   const isAuthenticated = Boolean(user);
   const hasHistory = createdRooms.length > 0 || joinedRooms.length > 0;
@@ -570,6 +579,51 @@ export function useDashboardState({
     clearDataAfterLogout();
   }
 
+  function openChangePasswordModal() {
+    setChangePasswordOpen(true);
+    setChangePasswordError("");
+    setChangePasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  }
+
+  function closeChangePasswordModal() {
+    setChangePasswordOpen(false);
+    setChangePasswordError("");
+    setChangePasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  }
+
+  async function handleChangePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!changePasswordForm.currentPassword || !changePasswordForm.newPassword || !changePasswordForm.confirmPassword) {
+      setChangePasswordError(t("请完整填写密码信息。", "Please complete all password fields."));
+      return;
+    }
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setChangePasswordError(t("两次输入的新密码不一致。", "New passwords do not match."));
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    setChangePasswordError("");
+
+    try {
+      await postProtected<{ ok: true }>(
+        "/api/auth/change-password",
+        {
+          currentPassword: changePasswordForm.currentPassword,
+          newPassword: changePasswordForm.newPassword,
+        },
+        t("修改密码失败", "Failed to change password"),
+      );
+      closeChangePasswordModal();
+    } catch (error) {
+      setChangePasswordError(error instanceof Error ? error.message : t("修改密码失败", "Failed to change password"));
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  }
+
   return {
     authError,
     authForm,
@@ -577,14 +631,20 @@ export function useDashboardState({
     authMode,
     authNextPath,
     authTitle,
+    changePasswordError,
+    changePasswordForm,
+    changePasswordLoading,
+    changePasswordOpen,
     clearLlm,
     clearLivekit,
     clearTranscription,
+    closeChangePasswordModal,
     closeAuthModal,
     createdRooms,
     dashboardLoading,
     handleAuthSubmit,
     handleCreateRoom,
+    handleChangePasswordSubmit,
     handleJoinRoom,
     handleLogout,
     hasHistory,
@@ -599,6 +659,7 @@ export function useDashboardState({
     llmKeyStatus,
     llmLoading,
     openLoginModal,
+    openChangePasswordModal,
     openRegisterModal,
     publicRooms,
     publicRoomsError,
@@ -619,6 +680,7 @@ export function useDashboardState({
     saveTranscription,
     setAuthForm,
     setAuthMode,
+    setChangePasswordForm,
     setDefaultProvider,
     setLivekitForm,
     setLlmForm,
