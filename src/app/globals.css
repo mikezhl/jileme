@@ -71,6 +71,21 @@ a:focus-visible {
   gap: 40px;
 }
 
+.home-page-footer {
+  width: min(1000px, 100%);
+  margin-top: auto;
+  padding-top: 32px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.home-page-footer p {
+  margin: 0;
+  word-break: break-word;
+}
+
 .minimal-header {
   padding: 0 0 24px;
   display: flex;

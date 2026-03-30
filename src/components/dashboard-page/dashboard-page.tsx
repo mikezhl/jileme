@@ -25,6 +25,7 @@ export default function DashboardPageClient(props: DashboardPageClientProps) {
   return (
     <DashboardPageView
       heroSubtitle={heroSubtitle}
+      homePageFooterText={props.homePageFooterText}
       isZh={isZh}
       language={language}
       onToggleLanguage={() => setLanguage(isZh ? "en" : "zh")}

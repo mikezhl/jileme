@@ -16,6 +16,7 @@ import { type DashboardState } from "./use-dashboard-state";
 
 type DashboardPageViewProps = {
   heroSubtitle: string;
+  homePageFooterText: string | null;
   isZh: boolean;
   language: UiLanguage;
   onToggleLanguage: () => void;
@@ -28,6 +29,7 @@ type TabType = "public" | "my-rooms" | "settings";
 
 export function DashboardPageView({
   heroSubtitle,
+  homePageFooterText,
   isZh,
   language,
   onToggleLanguage,
@@ -171,6 +173,12 @@ export function DashboardPageView({
             </section>
           </div>
         </section>
+
+        {homePageFooterText ? (
+          <footer className="home-page-footer" aria-label={t("底部信息", "Footer information")}>
+            <p>{homePageFooterText}</p>
+          </footer>
+        ) : null}
       </main>
 
       {state.authMode ? (

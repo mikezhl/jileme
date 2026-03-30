@@ -1,5 +1,6 @@
 type EnvKey =
   | "DATABASE_URL"
+  | "HOME_PAGE_FOOTER_TEXT"
   | "LIVEKIT_URL"
   | "LIVEKIT_API_KEY"
   | "LIVEKIT_API_SECRET"
@@ -74,6 +75,10 @@ export function getUserProviderKeysMode(): UserProviderKeysMode {
   }
 
   return "true";
+}
+
+export function getHomePageFooterText(): string | null {
+  return optionalEnv("HOME_PAGE_FOOTER_TEXT");
 }
 
 export function isRoomSpeakerSwitchEnabled(): boolean {

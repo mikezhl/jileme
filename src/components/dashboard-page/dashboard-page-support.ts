@@ -114,6 +114,7 @@ export type DashboardPageClientProps = {
   initialUserProviderKeysMode: UserProviderKeysMode;
   initialAuthMode: DashboardAuthMode;
   initialNextPath: string | null;
+  homePageFooterText: string | null;
 };
 
 export type AuthResponse = {

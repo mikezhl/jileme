@@ -1,7 +1,7 @@
 import DashboardPageClient from "@/components/dashboard-page/dashboard-page";
 import { getCurrentUser } from "@/lib/auth";
 import { getUserTranscriptionSettingsStatus } from "@/features/transcription/core/user-settings";
-import { getUserProviderKeysMode } from "@/lib/env";
+import { getHomePageFooterText, getUserProviderKeysMode } from "@/lib/env";
 import { getUserLlmKeyStatus } from "@/lib/llm-provider-keys";
 import { getUserLivekitCredentialStatus } from "@/lib/livekit-credentials";
 import { getPublicRoomsPage } from "@/lib/public-rooms";
@@ -41,6 +41,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
   const [user, publicRoomsResult] = await Promise.all([getCurrentUser(), getPublicRoomsPage(1)]);
   const userProviderKeysMode = getUserProviderKeysMode();
+  const footerText = getHomePageFooterText();
   const allowUserProviderKeys = userProviderKeysMode !== "false";
   const initialAuthMode = user ? null : normalizeAuthMode(params?.auth);
   const initialNextPath = normalizeNextPath(params?.next);
@@ -62,6 +63,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         initialUserProviderKeysMode={userProviderKeysMode}
         initialAuthMode={initialAuthMode}
         initialNextPath={initialNextPath}
+        homePageFooterText={footerText}
       />
     );
   }
@@ -138,6 +140,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       initialUserProviderKeysMode={userProviderKeysMode}
       initialAuthMode={initialAuthMode}
       initialNextPath={initialNextPath}
+      homePageFooterText={footerText}
     />
   );
 }
