@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { type UiLanguage } from "@/lib/ui-language";
 
 import { type DashboardTranslate } from "./dashboard-page-support";
@@ -23,6 +24,8 @@ type DashboardPageViewProps = {
   t: DashboardTranslate;
 };
 
+type TabType = "public" | "my-rooms" | "settings";
+
 export function DashboardPageView({
   heroSubtitle,
   isZh,
@@ -32,6 +35,8 @@ export function DashboardPageView({
   state,
   t,
 }: DashboardPageViewProps) {
+  const [activeTab, setActiveTab] = useState<TabType>("public");
+
   return (
     <>
       <main className="dashboard-page minimal-page">
@@ -59,84 +64,112 @@ export function DashboardPageView({
             t={t}
           />
 
-          <section className="minimal-details-wrap">
-            <PublicRoomPanel
-              language={language}
-              onPageChange={state.loadPublicRoomsPage}
-              publicRooms={state.publicRooms}
-              publicRoomsError={state.publicRoomsError}
-              publicRoomsLoading={state.publicRoomsLoading}
-              publicRoomsPage={state.publicRoomsPage}
-              publicRoomsTotalCount={state.publicRoomsTotalCount}
-              publicRoomsTotalPages={state.publicRoomsTotalPages}
-              t={t}
-            />
+          <div className="minimal-content-area">
+            <div className="minimal-tabs">
+              <button
+                className={`minimal-tab-btn ${activeTab === "public" ? "active" : ""}`}
+                onClick={() => setActiveTab("public")}
+              >
+                {t("公开房间", "Public Rooms")}
+              </button>
+              <button
+                className={`minimal-tab-btn ${activeTab === "my-rooms" ? "active" : ""}`}
+                onClick={() => setActiveTab("my-rooms")}
+              >
+                {t("我的房间", "My Rooms")}
+              </button>
+              <button
+                className={`minimal-tab-btn ${activeTab === "settings" ? "active" : ""}`}
+                onClick={() => setActiveTab("settings")}
+              >
+                {t("个人配置", "Settings")}
+              </button>
+            </div>
 
-            <RoomHistoryPanel
-              createdRooms={state.createdRooms}
-              dashboardLoading={state.dashboardLoading}
-              hasHistory={state.hasHistory}
-              isAuthenticated={state.isAuthenticated}
-              joinedRooms={state.joinedRooms}
-              language={language}
-              onRefresh={state.refreshDashboard}
-              t={t}
-            />
-
-            <UsageStatsPanel
-              isAuthenticated={state.isAuthenticated}
-              language={language}
-              t={t}
-              usageSummary={state.usageSummary}
-            />
-
-            {showUserProviderSettings ? (
-              <>
-                <LivekitSettingsPanel
-                  isAuthenticated={state.isAuthenticated}
+            <section className="minimal-details-wrap">
+              {activeTab === "public" && (
+                <PublicRoomPanel
                   language={language}
-                  livekitError={state.livekitError}
-                  livekitForm={state.livekitForm}
-                  livekitLoading={state.livekitLoading}
-                  livekitStatus={state.livekitStatus}
-                  onClearLivekit={state.clearLivekit}
-                  onRefreshLivekitStatus={state.refreshLivekitStatus}
-                  onSaveLivekit={state.saveLivekit}
-                  setLivekitForm={state.setLivekitForm}
+                  onPageChange={state.loadPublicRoomsPage}
+                  publicRooms={state.publicRooms}
+                  publicRoomsError={state.publicRoomsError}
+                  publicRoomsLoading={state.publicRoomsLoading}
+                  publicRoomsPage={state.publicRoomsPage}
+                  publicRoomsTotalCount={state.publicRoomsTotalCount}
+                  publicRoomsTotalPages={state.publicRoomsTotalPages}
                   t={t}
                 />
+              )}
 
-                <TranscriptionSettingsPanel
+              {activeTab === "my-rooms" && (
+                <RoomHistoryPanel
+                  createdRooms={state.createdRooms}
+                  hasHistory={state.hasHistory}
                   isAuthenticated={state.isAuthenticated}
+                  joinedRooms={state.joinedRooms}
                   language={language}
-                  onClearTranscription={state.clearTranscription}
-                  onRefreshTranscriptionStatus={state.refreshTranscriptionStatus}
-                  onSaveTranscription={state.saveTranscription}
-                  onSetDefaultProvider={state.setDefaultProvider}
-                  setTranscriptionForm={state.setTranscriptionForm}
-                  t={t}
-                  transcriptionError={state.transcriptionError}
-                  transcriptionForm={state.transcriptionForm}
-                  transcriptionLoading={state.transcriptionLoading}
-                  transcriptionStatus={state.transcriptionStatus}
-                />
-
-                <LlmSettingsPanel
-                  isAuthenticated={state.isAuthenticated}
-                  language={language}
-                  llmError={state.llmError}
-                  llmForm={state.llmForm}
-                  llmKeyStatus={state.llmKeyStatus}
-                  llmLoading={state.llmLoading}
-                  onClearLlm={state.clearLlm}
-                  onRefreshLlmStatus={state.refreshLlmStatus}
-                  onSaveLlm={state.saveLlm}
-                  setLlmForm={state.setLlmForm}
                   t={t}
                 />
-              </>
-            ) : null}
-          </section>
+              )}
+
+              {activeTab === "settings" && (
+                <>
+                  <UsageStatsPanel
+                    isAuthenticated={state.isAuthenticated}
+                    language={language}
+                    t={t}
+                    usageSummary={state.usageSummary}
+                  />
+
+                  {showUserProviderSettings ? (
+                    <>
+                      <LivekitSettingsPanel
+                        isAuthenticated={state.isAuthenticated}
+                        language={language}
+                        livekitError={state.livekitError}
+                        livekitForm={state.livekitForm}
+                        livekitLoading={state.livekitLoading}
+                        livekitStatus={state.livekitStatus}
+                        onClearLivekit={state.clearLivekit}
+                        onRefreshLivekitStatus={state.refreshLivekitStatus}
+                        onSaveLivekit={state.saveLivekit}
+                        setLivekitForm={state.setLivekitForm}
+                        t={t}
+                      />
+
+                      <TranscriptionSettingsPanel
+                        isAuthenticated={state.isAuthenticated}
+                        language={language}
+                        onClearTranscription={state.clearTranscription}
+                        onSaveTranscription={state.saveTranscription}
+                        onSetDefaultProvider={state.setDefaultProvider}
+                        setTranscriptionForm={state.setTranscriptionForm}
+                        t={t}
+                        transcriptionError={state.transcriptionError}
+                        transcriptionForm={state.transcriptionForm}
+                        transcriptionLoading={state.transcriptionLoading}
+                        transcriptionStatus={state.transcriptionStatus}
+                      />
+                    </>
+                  ) : null}
+
+                  <LlmSettingsPanel
+                    isAuthenticated={state.isAuthenticated}
+                    language={language}
+                    llmError={state.llmError}
+                    llmForm={state.llmForm}
+                    llmKeyStatus={state.llmKeyStatus}
+                    llmLoading={state.llmLoading}
+                    onClearLlm={state.clearLlm}
+                    onRefreshLlmStatus={state.refreshLlmStatus}
+                    onSaveLlm={state.saveLlm}
+                    setLlmForm={state.setLlmForm}
+                    t={t}
+                  />
+                </>
+              )}
+            </section>
+          </div>
         </section>
       </main>
 

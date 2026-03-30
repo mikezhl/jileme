@@ -6,7 +6,6 @@ import {
   DASHSCOPE_DEFAULT_MODEL,
   MANUAL_SECRET_INPUT_PROPS,
   PROVIDERS,
-  configuredLabel,
   providerLabel,
   type DashboardTranslate,
   type TranscriptionFormState,
@@ -18,7 +17,6 @@ type TranscriptionSettingsPanelProps = {
   isAuthenticated: boolean;
   language: UiLanguage;
   onClearTranscription: (provider: TranscriptionProviderName) => Promise<void>;
-  onRefreshTranscriptionStatus: () => Promise<void>;
   onSaveTranscription: (
     event: FormEvent<HTMLFormElement>,
     provider: TranscriptionProviderName,
@@ -36,7 +34,6 @@ export function TranscriptionSettingsPanel({
   isAuthenticated,
   language,
   onClearTranscription,
-  onRefreshTranscriptionStatus,
   onSaveTranscription,
   onSetDefaultProvider,
   setTranscriptionForm,
@@ -50,12 +47,21 @@ export function TranscriptionSettingsPanel({
     (transcriptionStatus?.providers ?? []).map((item) => [item.provider, item]),
   );
 
+  const isAnyConfigured = Boolean(transcriptionStatus?.providers.some((p) => p.configured));
+
   return (
-    <details className="minimal-details">
-      <summary>{t("配置实时转录", "Configure Realtime Transcription")}</summary>
+    <div className="settings-card">
+      <div className="settings-card-header">
+        <h3 style={{ display: 'flex', alignItems: 'center' }}>
+          {t("配置实时转录", "Configure Realtime Transcription")}
+          <span className={`setting-status-badge ${isAnyConfigured ? 'configured' : 'unconfigured'}`}>
+            {isAnyConfigured ? t("已配置", "Configured") : t("未配置", "Not configured")}
+          </span>
+        </h3>
+      </div>
 
       {!isAuthenticated ? (
-        <div className="details-content">
+        <div>
           <p className="panel-tip">
             {t(
               "登录后可分别保存不同转录平台的 Key，并设置自己的默认实时转录工具。",
@@ -64,12 +70,14 @@ export function TranscriptionSettingsPanel({
           </p>
         </div>
       ) : (
-        <div className="details-content">
+        <div className="settings-card-content">
           <p className="panel-tip">
             {t("默认转录工具", "Default provider")}:{" "}
-            {transcriptionStatus?.defaultProvider
-              ? providerLabel(transcriptionStatus.defaultProvider, language)
-              : t("未设置", "Not selected")}
+            <strong>
+              {transcriptionStatus?.defaultProvider
+                ? providerLabel(transcriptionStatus.defaultProvider, language)
+                : t("未设置", "Not selected")}
+            </strong>
             。
             {t(
               "房主在用户 Key 模式（true / full）下，必须同时拥有完整的 LiveKit 配置和默认转录工具配置，否则开启语音实时转录时会直接报错。平台 Key 与用户自己的 Key 不会混合使用。",
@@ -77,43 +85,29 @@ export function TranscriptionSettingsPanel({
             )}
           </p>
 
-          <div className="key-form-actions">
-            <button
-              type="button"
-              className="ghost-btn"
-              disabled={transcriptionLoading !== null}
-              onClick={() => void onRefreshTranscriptionStatus()}
-            >
-              {t("刷新状态", "Refresh status")}
-            </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              disabled={transcriptionLoading !== null || !transcriptionStatus?.defaultProvider}
-              onClick={() => void onSetDefaultProvider(null)}
-            >
-              {t("清除默认值", "Clear default")}
-            </button>
-          </div>
-
           {PROVIDERS.map((provider) => {
             const providerStatus = providerMap.get(provider);
+            const isConfigured = Boolean(providerStatus?.configured);
             const isDefault = transcriptionStatus?.defaultProvider === provider;
 
             return (
               <section
                 key={provider}
                 className="key-status-grid"
-                style={{ gap: "12px", background: "var(--card)", border: "1px solid var(--line)" }}
+                style={{ gap: "12px", background: "var(--surface)", border: "1px solid var(--line)" }}
               >
                 <div>
-                  <h4 style={{ margin: 0 }}>{providerLabel(provider, language)}</h4>
-                  <p className="panel-tip" style={{ marginTop: "6px" }}>
-                    {t("当前状态", "Current status")}: {configuredLabel(Boolean(providerStatus?.configured), language)}
-                  </p>
-                  <p className="panel-tip" style={{ marginTop: "6px" }}>
-                    API Key: {providerStatus?.credentialMask ?? t("未配置", "Not configured")}
-                  </p>
+                  <h4 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
+                    {providerLabel(provider, language)}
+                    <span className={`setting-status-badge ${isConfigured ? 'configured' : 'unconfigured'}`} style={{ marginLeft: "12px" }}>
+                      {isConfigured ? t("已配置", "Configured") : t("未配置", "Not configured")}
+                    </span>
+                    {isDefault && (
+                      <span className="setting-status-badge configured" style={{ background: "var(--foreground)", color: "var(--background)", marginLeft: "8px" }}>
+                        {t("默认", "Default")}
+                      </span>
+                    )}
+                  </h4>
                   {provider === "dashscope" ? (
                     <p className="panel-tip" style={{ marginTop: "6px" }}>
                       {t("默认模型", "Default model")}: {DASHSCOPE_DEFAULT_MODEL}
@@ -134,7 +128,7 @@ export function TranscriptionSettingsPanel({
                     onChange={(event) =>
                       setTranscriptionForm((current) => ({ ...current, [provider]: event.target.value }))
                     }
-                    placeholder={provider === "dashscope" ? "DASHSCOPE_API_KEY" : "DEEPGRAM_API_KEY"}
+                    placeholder={providerStatus?.credentialMask || (provider === "dashscope" ? "DASHSCOPE_API_KEY" : "DEEPGRAM_API_KEY")}
                   />
 
                   {provider === "dashscope" ? (
@@ -165,7 +159,7 @@ export function TranscriptionSettingsPanel({
                     <button
                       type="button"
                       className={isDefault ? "primary-btn" : "ghost-btn"}
-                      disabled={transcriptionLoading !== null || !providerStatus?.configured}
+                      disabled={transcriptionLoading !== null || !isConfigured}
                       onClick={() => void onSetDefaultProvider(provider)}
                     >
                       {transcriptionLoading === `default:${provider}`
@@ -183,6 +177,6 @@ export function TranscriptionSettingsPanel({
           {transcriptionError ? <p className="form-error">{transcriptionError}</p> : null}
         </div>
       )}
-    </details>
+    </div>
   );
 }

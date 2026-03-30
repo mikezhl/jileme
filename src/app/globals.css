@@ -314,6 +314,122 @@ a:focus-visible {
   color: var(--muted);
 }
 
+
+/* Minimal Tabs */
+.minimal-tabs {
+  display: flex;
+  gap: 32px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+
+.minimal-content-area {
+  display: grid;
+  gap: 20px;
+}
+
+.minimal-tab-btn {
+  background: transparent;
+  border: none;
+  padding: 0 0 10px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.minimal-tab-btn:hover {
+  color: var(--foreground);
+}
+
+.minimal-tab-btn.active {
+  color: var(--foreground);
+}
+
+.minimal-tab-btn.active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 2px 2px 0 0;
+}
+
+.setting-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  margin-left: 12px;
+}
+
+.setting-status-badge.configured {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.setting-status-badge.unconfigured {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 3px 9px;
+}
+
+.setting-status-badge::before {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.setting-status-badge.configured::before {
+  background: #16a34a;
+}
+
+.setting-status-badge.unconfigured::before {
+  background: var(--muted);
+}
+
+.settings-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.settings-card-header {
+  margin-bottom: 20px;
+}
+
+.settings-card-header h3 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.settings-card-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.settings-card-content {
+  display: grid;
+  gap: 20px;
+}
+
 .minimal-details-wrap {
   display: grid;
   gap: 20px;
@@ -488,7 +604,9 @@ a:focus-visible {
 }
 
 .room-list-item-head {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -617,6 +735,12 @@ a:focus-visible {
   font-weight: 600;
 }
 
+.room-history-details {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
 @media (max-width: 768px) {
   .room-list-item {
     padding: 16px;
@@ -646,6 +770,13 @@ a:focus-visible {
     padding: 0 10px;
     font-size: 0.74rem;
   }
+
+  .minimal-content-area,
+  .minimal-details-wrap,
+  .settings-card-content,
+  .room-history-details {
+    gap: 16px;
+  }
 }
 
 .key-status-grid {
@@ -662,6 +793,16 @@ a:focus-visible {
   display: grid;
   gap: 12px;
   margin-top: 8px;
+}
+
+.key-form input {
+  font-size: 0.9rem !important;
+  font-family: inherit !important;
+}
+
+.key-form input::placeholder {
+  font-size: 0.9rem !important;
+  font-family: inherit !important;
 }
 
 .key-form-actions {
