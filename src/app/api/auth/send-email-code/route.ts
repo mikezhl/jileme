@@ -11,6 +11,7 @@ import {
   releaseEmailSendIpRateLimit,
   reserveEmailSendIpRateLimit,
 } from "@/lib/email-send-rate-limit";
+import { isLinuxDoConnectVirtualEmail } from "@/lib/linux-do-connect";
 import { prisma } from "@/lib/prisma";
 
 type SendEmailCodeRequest = {
@@ -42,6 +43,15 @@ export async function POST(request: Request) {
         await releaseEmailSendIpRateLimit(ipReservation.attemptId);
         reservedAttemptId = null;
         return NextResponse.json({ error: emailError }, { status: 400 });
+      }
+
+      if (isLinuxDoConnectVirtualEmail(email)) {
+        await releaseEmailSendIpRateLimit(ipReservation.attemptId);
+        reservedAttemptId = null;
+        return NextResponse.json(
+          { error: "linux do connect reserved email domain is not allowed" },
+          { status: 400 },
+        );
       }
 
       const existingUser = await prisma.user.findUnique({
@@ -89,6 +99,15 @@ export async function POST(request: Request) {
       reservedAttemptId = null;
       return NextResponse.json(
         { error: "current account has no email. legacy accounts must use current password to change password" },
+        { status: 400 },
+      );
+    }
+
+    if (isLinuxDoConnectVirtualEmail(user.email)) {
+      await releaseEmailSendIpRateLimit(ipReservation.attemptId);
+      reservedAttemptId = null;
+      return NextResponse.json(
+        { error: "linux do connect accounts can only sign in via connect login" },
         { status: 400 },
       );
     }

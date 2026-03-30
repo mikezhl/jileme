@@ -11,6 +11,7 @@ import {
   validatePassword,
   validateUsername,
 } from "@/lib/auth";
+import { isLinuxDoConnectVirtualEmail } from "@/lib/linux-do-connect";
 import { prisma } from "@/lib/prisma";
 import {
   consumeEmailVerificationCode,
@@ -49,6 +50,13 @@ export async function POST(request: Request) {
     const emailError = validateEmail(email);
     if (emailError) {
       return NextResponse.json({ error: emailError }, { status: 400 });
+    }
+
+    if (isLinuxDoConnectVirtualEmail(email)) {
+      return NextResponse.json(
+        { error: "linux do connect reserved email domain is not allowed" },
+        { status: 400 },
+      );
     }
 
     const usernameError = validateUsername(username);

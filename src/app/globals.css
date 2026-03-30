@@ -1040,6 +1040,16 @@ a:focus-visible {
   gap: 16px;
 }
 
+.auth-provider-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.auth-provider-btn {
+  width: 100%;
+}
+
 .settings-card.auth-form {
   display: flex;
   flex-direction: column;

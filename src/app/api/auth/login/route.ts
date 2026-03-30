@@ -7,6 +7,7 @@ import {
   setSessionCookie,
   verifyPassword,
 } from "@/lib/auth";
+import { isLinuxDoConnectVirtualEmail } from "@/lib/linux-do-connect";
 import { prisma } from "@/lib/prisma";
 
 type LoginRequest = {
@@ -35,6 +36,10 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
+      return NextResponse.json({ error: "invalid username/email or password" }, { status: 401 });
+    }
+
+    if (isLinuxDoConnectVirtualEmail(user.email)) {
       return NextResponse.json({ error: "invalid username/email or password" }, { status: 401 });
     }
 

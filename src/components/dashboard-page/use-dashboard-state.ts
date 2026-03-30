@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { isLinuxDoConnectVirtualEmail } from "@/lib/linux-do-connect";
 import { type UiLanguage } from "@/lib/ui-language";
 
 import {
@@ -47,6 +48,8 @@ export function useDashboardState({
   initialTranscriptionStatus,
   initialLlmKeyStatus,
   initialUsageSummary,
+  initialAuthError,
+  linuxDoConnectEnabled,
   initialAuthMode,
   initialNextPath,
   language,
@@ -118,7 +121,7 @@ export function useDashboardState({
   const [authCodeLoading, setAuthCodeLoading] = useState(false);
   const [authCodeCountdown, setAuthCodeCountdown] = useState(0);
   const [authCodeMessage, setAuthCodeMessage] = useState("");
-  const [authError, setAuthError] = useState("");
+  const [authError, setAuthError] = useState(initialAuthError);
   const [pendingRoomAction, setPendingRoomAction] = useState<RoomAction | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [changeUsernameForm, setChangeUsernameForm] = useState<ChangeUsernameFormState>(
@@ -137,6 +140,7 @@ export function useDashboardState({
   const isAuthenticated = Boolean(user);
   const hasHistory = createdRooms.length > 0 || joinedRooms.length > 0;
   const authTitle = authMode === "register" ? t("注册", "Sign Up") : t("登录", "Sign In");
+  const canResetPasswordByEmail = Boolean(user?.email) && !isLinuxDoConnectVirtualEmail(user?.email);
 
   useEffect(() => {
     if (authCodeCountdown <= 0) {
@@ -804,6 +808,15 @@ export function useDashboardState({
       );
       return;
     }
+    if (isLinuxDoConnectVirtualEmail(user.email)) {
+      setChangePasswordError(
+        t(
+          "此账号只能通过 Linux Do Connect 登录，不支持修改本地密码。",
+          "This account can only sign in with Linux Do Connect and does not support local password changes.",
+        ),
+      );
+      return;
+    }
     if (changePasswordCodeCountdown > 0) {
       return;
     }
@@ -842,18 +855,29 @@ export function useDashboardState({
 
   async function handleChangePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const requiresCurrentPassword = !user?.email;
+
+    if (isLinuxDoConnectVirtualEmail(user?.email)) {
+      setChangePasswordError(
+        t(
+          "此账号只能通过 Linux Do Connect 登录，不支持修改本地密码。",
+          "This account can only sign in with Linux Do Connect and does not support local password changes.",
+        ),
+      );
+      return;
+    }
 
     if (!changePasswordForm.newPassword) {
       setChangePasswordError(t("请填写新密码。", "Please enter a new password."));
       return;
     }
 
-    if (user?.email) {
+    if (canResetPasswordByEmail) {
       if (!changePasswordForm.verificationCode) {
         setChangePasswordError(t("请输入验证码。", "Please enter the verification code."));
         return;
       }
-    } else if (!changePasswordForm.currentPassword) {
+    } else if (requiresCurrentPassword && !changePasswordForm.currentPassword) {
       setChangePasswordError(
         t("当前账号未绑定邮箱，请输入当前密码。", "This account has no email. Please enter the current password."),
       );
@@ -922,6 +946,7 @@ export function useDashboardState({
     hasHistory,
     isAuthenticated,
     joinedRooms,
+    linuxDoConnectEnabled,
     livekitError,
     livekitForm,
     livekitLoading,

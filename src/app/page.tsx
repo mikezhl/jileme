@@ -1,7 +1,7 @@
 import DashboardPageClient from "@/components/dashboard-page/dashboard-page";
 import { getCurrentUser } from "@/lib/auth";
 import { getUserTranscriptionSettingsStatus } from "@/features/transcription/core/user-settings";
-import { getHomePageFooterText, getUserProviderKeysMode } from "@/lib/env";
+import { getHomePageFooterText, getUserProviderKeysMode, isLinuxDoConnectEnabled } from "@/lib/env";
 import { getUserLlmKeyStatus } from "@/lib/llm-provider-keys";
 import { getUserLivekitCredentialStatus } from "@/lib/livekit-credentials";
 import { getPublicRoomsPage } from "@/lib/public-rooms";
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 type HomePageSearchParams = {
   auth?: string | string[];
+  error?: string | string[];
   next?: string | string[];
 };
 
@@ -27,10 +28,23 @@ function normalizeAuthMode(mode?: string | string[]) {
 }
 
 function normalizeNextPath(path?: string | string[]) {
-  if (typeof path !== "string" || !path.startsWith("/")) {
+  if (
+    typeof path !== "string" ||
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.startsWith("/\\")
+  ) {
     return null;
   }
   return path;
+}
+
+function normalizeAuthError(error?: string | string[]) {
+  if (typeof error !== "string") {
+    return "";
+  }
+
+  return error.trim().slice(0, 240);
 }
 
 type HomePageProps = {
@@ -41,14 +55,17 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
   const [user, publicRoomsResult] = await Promise.all([getCurrentUser(), getPublicRoomsPage(1)]);
   const userProviderKeysMode = getUserProviderKeysMode();
+  const linuxDoConnectEnabled = isLinuxDoConnectEnabled();
   const footerText = getHomePageFooterText();
   const allowUserProviderKeys = userProviderKeysMode !== "false";
   const initialAuthMode = user ? null : normalizeAuthMode(params?.auth);
+  const initialAuthError = user ? "" : normalizeAuthError(params?.error);
   const initialNextPath = normalizeNextPath(params?.next);
 
   if (!user) {
     return (
       <DashboardPageClient
+        initialAuthError={initialAuthError}
         initialUser={null}
         initialCreatedRooms={[]}
         initialJoinedRooms={[]}
@@ -60,6 +77,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         initialTranscriptionStatus={null}
         initialLlmKeyStatus={null}
         initialUsageSummary={null}
+        linuxDoConnectEnabled={linuxDoConnectEnabled}
         initialUserProviderKeysMode={userProviderKeysMode}
         initialAuthMode={initialAuthMode}
         initialNextPath={initialNextPath}
@@ -119,6 +137,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   return (
     <DashboardPageClient
+      initialAuthError={initialAuthError}
       initialUser={{
         email: user.email,
         id: user.id,
@@ -137,6 +156,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       initialTranscriptionStatus={transcriptionStatus}
       initialLlmKeyStatus={llmKeyStatus}
       initialUsageSummary={usageSummary}
+      linuxDoConnectEnabled={linuxDoConnectEnabled}
       initialUserProviderKeysMode={userProviderKeysMode}
       initialAuthMode={initialAuthMode}
       initialNextPath={initialNextPath}

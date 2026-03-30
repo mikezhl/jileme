@@ -189,6 +189,7 @@ export function DashboardPageView({
           authError={state.authError}
           authForm={state.authForm}
           authLoading={state.authLoading}
+          linuxDoConnectEnabled={state.linuxDoConnectEnabled}
           authMode={state.authMode}
           authNextPath={state.authNextPath}
           authTitle={state.authTitle}

@@ -14,7 +14,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const user = await getCurrentUser();
   const params = await searchParams;
   const nextPath = params?.next;
-  const normalizedNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
+  const normalizedNext =
+    nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") && !nextPath.startsWith("/\\")
+      ? nextPath
+      : null;
 
   if (user) {
     if (normalizedNext) {

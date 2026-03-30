@@ -40,6 +40,9 @@ type EnvKey =
   | "PLATFORM_LLM_LIMIT_TOKENS_PER_USER"
   | "AUTH_EMAIL_CODE_TTL_MINUTES"
   | "AUTH_EMAIL_CODE_RESEND_SECONDS"
+  | "LINUX_DO_CONNECT_CLIENT_ID"
+  | "LINUX_DO_CONNECT_CLIENT_SECRET"
+  | "LINUX_DO_CONNECT_REDIRECT_URI"
   | "SMTP_HOST"
   | "SMTP_PORT"
   | "SMTP_SECURE"
@@ -105,6 +108,35 @@ export function getAuthEmailCodeTtlMinutes(): number {
 
 export function getAuthEmailCodeResendSeconds(): number {
   return Math.max(0, parseIntegerEnv(optionalEnv("AUTH_EMAIL_CODE_RESEND_SECONDS"), 60));
+}
+
+export function getLinuxDoConnectConfig() {
+  const clientId = optionalEnv("LINUX_DO_CONNECT_CLIENT_ID");
+  const clientSecret = optionalEnv("LINUX_DO_CONNECT_CLIENT_SECRET");
+  const redirectUri = optionalEnv("LINUX_DO_CONNECT_REDIRECT_URI");
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    return null;
+  }
+
+  try {
+    const url = new URL(redirectUri);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+  };
+}
+
+export function isLinuxDoConnectEnabled(): boolean {
+  return getLinuxDoConnectConfig() !== null;
 }
 
 export function getSmtpPort(): number {

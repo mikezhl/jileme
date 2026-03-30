@@ -13,6 +13,7 @@ type AuthModalProps = {
   authError: string;
   authForm: AuthFormState;
   authLoading: boolean;
+  linuxDoConnectEnabled: boolean;
   authMode: NonNullable<DashboardAuthMode>;
   authNextPath: string | null;
   authTitle: string;
@@ -31,6 +32,7 @@ export function AuthModal({
   authError,
   authForm,
   authLoading,
+  linuxDoConnectEnabled,
   authMode,
   authNextPath,
   authTitle,
@@ -41,6 +43,10 @@ export function AuthModal({
   setAuthForm,
   t,
 }: AuthModalProps) {
+  const linuxDoConnectHref = `/api/auth/linux-do-connect?mode=${authMode}${
+    authNextPath ? `&next=${encodeURIComponent(authNextPath)}` : ""
+  }`;
+
   return (
     <div className="auth-modal-overlay" role="dialog" aria-modal="true">
       <section className="auth-modal">
@@ -151,6 +157,14 @@ export function AuthModal({
             {authLoading ? `${authTitle}${t("中...", "...")}` : authTitle}
           </button>
         </form>
+
+        {linuxDoConnectEnabled && authMode === "login" ? (
+          <div className="auth-provider-section">
+            <a className="ghost-btn auth-provider-btn" href={linuxDoConnectHref}>
+              {t("使用 Linux Do Connect 登录", "Sign in with Linux Do Connect")}
+            </a>
+          </div>
+        ) : null}
 
         {authCodeMessage ? <p className="panel-tip">{authCodeMessage}</p> : null}
         {authError ? <p className="form-error">{authError}</p> : null}

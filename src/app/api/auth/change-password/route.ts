@@ -12,6 +12,7 @@ import {
   normalizeVerificationCode,
   validateVerificationCode,
 } from "@/lib/email-verification";
+import { isLinuxDoConnectVirtualEmail } from "@/lib/linux-do-connect";
 import { prisma } from "@/lib/prisma";
 
 type ChangePasswordRequest = {
@@ -33,6 +34,14 @@ export async function POST(request: Request) {
     const currentPassword = body.currentPassword?.trim() ?? "";
     const verificationCode = normalizeVerificationCode(body.verificationCode);
     const newPassword = body.newPassword?.trim() ?? "";
+    const canResetByEmail = Boolean(user.email) && !isLinuxDoConnectVirtualEmail(user.email);
+
+    if (isLinuxDoConnectVirtualEmail(user.email)) {
+      return NextResponse.json(
+        { error: "linux do connect accounts can only sign in via connect login" },
+        { status: 400 },
+      );
+    }
 
     if (!newPassword) {
       return NextResponse.json({ error: "new password is required" }, { status: 400 });
@@ -43,7 +52,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
-    if (!user.email) {
+    if (!canResetByEmail) {
       if (!currentPassword) {
         return NextResponse.json(
           { error: "current password is required for legacy accounts without email" },

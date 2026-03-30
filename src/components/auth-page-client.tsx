@@ -14,7 +14,7 @@ type AuthResponse = {
 };
 
 function normalizeNextPath(raw: string | null) {
-  if (!raw || !raw.startsWith("/")) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
     return "/";
   }
   return raw;

@@ -100,6 +100,7 @@ export type ChangePasswordFormState = {
 };
 
 export type DashboardPageClientProps = {
+  initialAuthError: string;
   initialUser: UserInfo | null;
   initialCreatedRooms: RoomSummary[];
   initialJoinedRooms: RoomSummary[];
@@ -111,6 +112,7 @@ export type DashboardPageClientProps = {
   initialTranscriptionStatus: TranscriptionSettingsStatus | null;
   initialLlmKeyStatus: LlmKeyStatus | null;
   initialUsageSummary: UsageSummary | null;
+  linuxDoConnectEnabled: boolean;
   initialUserProviderKeysMode: UserProviderKeysMode;
   initialAuthMode: DashboardAuthMode;
   initialNextPath: string | null;
@@ -171,7 +173,12 @@ export function emptyProviderForm(): TranscriptionFormState {
 }
 
 export function normalizeNextPath(value: unknown) {
-  if (typeof value !== "string" || !value.startsWith("/")) {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.startsWith("/\\")
+  ) {
     return null;
   }
   return value;
