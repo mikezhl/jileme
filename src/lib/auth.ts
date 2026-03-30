@@ -40,6 +40,10 @@ export function normalizeUsername(input?: string | null) {
   return input?.trim().toLowerCase() ?? "";
 }
 
+export function normalizeEmail(input?: string | null) {
+  return input?.trim().toLowerCase() ?? "";
+}
+
 export function isReservedUsername(username: string) {
   return username === SYSTEM_USERNAME;
 }
@@ -57,6 +61,16 @@ export function validateUsername(username: string) {
 export function validatePassword(password: string) {
   if (password.length < 6 || password.length > 72) {
     return "password must be between 6 and 72 characters";
+  }
+  return null;
+}
+
+export function validateEmail(email: string) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "email is invalid";
+  }
+  if (email.length > 320) {
+    return "email is too long";
   }
   return null;
 }

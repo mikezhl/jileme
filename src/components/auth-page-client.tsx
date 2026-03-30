@@ -100,7 +100,7 @@ export default function AuthPageClient({ mode }: AuthPageClientProps) {
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
 
-          <button type="submit" disabled={loading}>
+          <button type="submit" className="primary-btn" disabled={loading}>
             {loading ? `${title}${t("中...", "...")}` : title}
           </button>
         </form>

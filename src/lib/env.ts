@@ -37,6 +37,15 @@ type EnvKey =
   | "CONVERSATION_LLM_OPENAI_MODEL"
   | "PLATFORM_TRANSCRIPTION_LIMIT_MINUTES_PER_USER"
   | "PLATFORM_LLM_LIMIT_TOKENS_PER_USER"
+  | "AUTH_EMAIL_CODE_TTL_MINUTES"
+  | "AUTH_EMAIL_CODE_RESEND_SECONDS"
+  | "SMTP_HOST"
+  | "SMTP_PORT"
+  | "SMTP_SECURE"
+  | "SMTP_USER"
+  | "SMTP_PASS"
+  | "SMTP_FROM_EMAIL"
+  | "SMTP_FROM_NAME"
   | "APP_ENCRYPTION_SECRET"
   | "SESSION_TTL_HOURS"
   | "USER_PROVIDER_KEYS_MODE"
@@ -83,6 +92,22 @@ export function getPlatformTranscriptionLimitMinutesPerUser(): number | null {
 export function getPlatformLlmLimitTokensPerUser(): number | null {
   const limit = parseIntegerEnv(optionalEnv("PLATFORM_LLM_LIMIT_TOKENS_PER_USER"), 5_000_000);
   return normalizePositiveLimit(limit);
+}
+
+export function getAuthEmailCodeTtlMinutes(): number {
+  return Math.max(1, parseIntegerEnv(optionalEnv("AUTH_EMAIL_CODE_TTL_MINUTES"), 10));
+}
+
+export function getAuthEmailCodeResendSeconds(): number {
+  return Math.max(0, parseIntegerEnv(optionalEnv("AUTH_EMAIL_CODE_RESEND_SECONDS"), 60));
+}
+
+export function getSmtpPort(): number {
+  return Math.max(1, parseIntegerEnv(optionalEnv("SMTP_PORT"), 465));
+}
+
+export function isSmtpSecure(): boolean {
+  return parseBooleanEnv(optionalEnv("SMTP_SECURE"), true);
 }
 
 export function parseBooleanEnv(value: string | null | undefined, fallback: boolean) {

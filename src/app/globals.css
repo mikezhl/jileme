@@ -269,10 +269,11 @@ a:focus-visible {
 /* Flat Inputs */
 .join-room-form input,
 .key-form input,
-.modal-auth-form input,
+.auth-form input,
 .auth-card input,
 .room-chat-form input,
 .chat-form input,
+.settings-field-block input,
 .room-chat-form textarea,
 .chat-form textarea {
   width: 100%;
@@ -292,10 +293,11 @@ a:focus-visible {
 
 .join-room-form input:focus,
 .key-form input:focus,
-.modal-auth-form input:focus,
+.auth-form input:focus,
 .auth-card input:focus,
 .room-chat-form input:focus,
 .chat-form input:focus,
+.settings-field-block input:focus,
 .room-chat-form textarea:focus,
 .chat-form textarea:focus {
   background: var(--card);
@@ -306,9 +308,10 @@ a:focus-visible {
 
 .join-room-form input::placeholder,
 .key-form input::placeholder,
-.modal-auth-form input::placeholder,
+.auth-form input::placeholder,
 .room-chat-form input::placeholder,
 .chat-form input::placeholder,
+.settings-field-block input::placeholder,
 .room-chat-form textarea::placeholder,
 .chat-form textarea::placeholder {
   color: var(--muted);
@@ -818,6 +821,13 @@ a:focus-visible {
   font-size: 0.9rem;
 }
 
+.form-success {
+  margin: 4px 0 0;
+  color: var(--success);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .form-error {
   margin: 4px 0 0;
   color: var(--error);
@@ -948,6 +958,10 @@ a:focus-visible {
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
 }
 
+.account-settings-modal {
+  width: min(480px, 100%);
+}
+
 .auth-modal-header {
   display: flex;
   justify-content: space-between;
@@ -1011,6 +1025,61 @@ a:focus-visible {
   gap: 16px;
 }
 
+.settings-card.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-card.auth-form > button[type="submit"] {
+  margin-top: auto;
+}
+
+.inline-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.inline-action-btn {
+  min-width: 132px;
+  padding: 0 16px;
+}
+
+.account-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.settings-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-field-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.settings-field-desc {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: -2px 0 4px;
+}
+
+.settings-field-value {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.settings-field-value.text-muted {
+  font-style: italic;
+}
+
 .home-form {
   margin-top: 12px;
   display: grid;
@@ -1025,9 +1094,19 @@ a:focus-visible {
   margin-bottom: -8px;
 }
 
-.auth-form button,
+.auth-form > button[type="submit"],
 .home-actions button {
   margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .inline-action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-action-btn {
+    width: 100%;
+  }
 }
 
 .auth-page {

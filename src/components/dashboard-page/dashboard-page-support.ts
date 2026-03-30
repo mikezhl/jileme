@@ -20,6 +20,7 @@ export type RoomSummary = {
 };
 
 export type UserInfo = {
+  email: string | null;
   id: string;
   username: string;
 };
@@ -81,14 +82,21 @@ export type LlmFormState = {
 };
 
 export type AuthFormState = {
+  email: string;
+  identifier: string;
+  verificationCode: string;
   username: string;
   password: string;
 };
 
+export type ChangeUsernameFormState = {
+  username: string;
+};
+
 export type ChangePasswordFormState = {
   currentPassword: string;
+  verificationCode: string;
   newPassword: string;
-  confirmPassword: string;
 };
 
 export type DashboardPageClientProps = {
@@ -110,6 +118,14 @@ export type DashboardPageClientProps = {
 
 export type AuthResponse = {
   user?: UserInfo;
+  error?: string;
+};
+
+export type VerificationCodeResponse = {
+  ok?: boolean;
+  expiresAt?: string;
+  retryAfterSeconds?: number;
+  targetEmail?: string;
   error?: string;
 };
 

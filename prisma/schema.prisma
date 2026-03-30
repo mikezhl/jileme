@@ -45,6 +45,11 @@ enum RoomAnalysisProfile {
   HUMOR
 }
 
+enum EmailVerificationPurpose {
+  REGISTER
+  CHANGE_PASSWORD
+}
+
 model Room {
   id                             String                @id @default(cuid())
   roomId                         String                @unique
@@ -87,6 +92,7 @@ model Message {
 model User {
   id                         String                                @id @default(cuid())
   username                   String                                @unique
+  email                      String?                               @unique
   passwordHash               String
   createdAt                  DateTime                              @default(now())
   updatedAt                  DateTime                              @updatedAt
@@ -99,6 +105,28 @@ model User {
   providerPreference         UserProviderPreference?
   llmKeys                    UserLlmKeys?
   usageStats                 UserUsageStats?
+}
+
+model EmailVerificationCode {
+  id         String                    @id @default(cuid())
+  email      String
+  purpose    EmailVerificationPurpose
+  codeHash   String
+  failedAttempts Int                   @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime                  @default(now())
+
+  @@index([email, purpose, createdAt])
+  @@index([expiresAt, consumedAt])
+}
+
+model EmailVerificationSendAttempt {
+  id        String   @id @default(cuid())
+  ipHash    String
+  createdAt DateTime @default(now())
+
+  @@index([ipHash, createdAt])
 }
 
 model Session {

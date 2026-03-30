@@ -2,8 +2,8 @@ import { useState } from "react";
 import { type UiLanguage } from "@/lib/ui-language";
 
 import { type DashboardTranslate } from "./dashboard-page-support";
+import { AccountSettingsModal } from "./sections/account-settings-modal";
 import { AuthModal } from "./sections/auth-modal";
-import { ChangePasswordModal } from "./sections/change-password-modal";
 import { DashboardHeader } from "./sections/dashboard-header";
 import { LivekitSettingsPanel } from "./sections/livekit-settings-panel";
 import { LlmSettingsPanel } from "./sections/llm-settings-panel";
@@ -45,7 +45,7 @@ export function DashboardPageView({
             heroSubtitle={heroSubtitle}
             isAuthenticated={state.isAuthenticated}
             isZh={isZh}
-            onOpenChangePassword={state.openChangePasswordModal}
+            onOpenAccountSettings={state.openAccountSettingsModal}
             onLogout={state.handleLogout}
             onOpenLogin={state.openLoginModal}
             onOpenRegister={state.openRegisterModal}
@@ -175,6 +175,9 @@ export function DashboardPageView({
 
       {state.authMode ? (
         <AuthModal
+          authCodeCountdown={state.authCodeCountdown}
+          authCodeLoading={state.authCodeLoading}
+          authCodeMessage={state.authCodeMessage}
           authError={state.authError}
           authForm={state.authForm}
           authLoading={state.authLoading}
@@ -182,22 +185,34 @@ export function DashboardPageView({
           authNextPath={state.authNextPath}
           authTitle={state.authTitle}
           onClose={state.closeAuthModal}
+          onSendCode={state.sendRegisterVerificationCode}
           onSubmit={state.handleAuthSubmit}
+          onSwitchMode={state.switchAuthMode}
           setAuthForm={state.setAuthForm}
-          setAuthMode={state.setAuthMode}
           t={t}
         />
       ) : null}
 
-      {state.changePasswordOpen ? (
-        <ChangePasswordModal
+      {state.accountSettingsOpen && state.user ? (
+        <AccountSettingsModal
+          changePasswordCodeCountdown={state.changePasswordCodeCountdown}
+          changePasswordCodeLoading={state.changePasswordCodeLoading}
+          changePasswordCodeMessage={state.changePasswordCodeMessage}
           changePasswordError={state.changePasswordError}
           changePasswordForm={state.changePasswordForm}
           changePasswordLoading={state.changePasswordLoading}
-          onClose={state.closeChangePasswordModal}
-          onSubmit={state.handleChangePasswordSubmit}
+          changeUsernameError={state.changeUsernameError}
+          changeUsernameForm={state.changeUsernameForm}
+          changeUsernameLoading={state.changeUsernameLoading}
+          changeUsernameSuccess={state.changeUsernameSuccess}
+          onClose={state.closeAccountSettingsModal}
+          onSendChangePasswordCode={state.sendChangePasswordVerificationCode}
+          onSubmitChangePassword={state.handleChangePasswordSubmit}
+          onSubmitChangeUsername={state.handleChangeUsernameSubmit}
           setChangePasswordForm={state.setChangePasswordForm}
+          setChangeUsernameForm={state.setChangeUsernameForm}
           t={t}
+          user={state.user}
         />
       ) : null}
     </>

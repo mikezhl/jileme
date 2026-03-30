@@ -10,7 +10,7 @@ type DashboardHeaderProps = {
   isAuthenticated: boolean;
   isZh: boolean;
   onLogout: () => Promise<void>;
-  onOpenChangePassword: () => void;
+  onOpenAccountSettings: () => void;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
   onToggleLanguage: () => void;
@@ -23,7 +23,7 @@ export function DashboardHeader({
   isAuthenticated,
   isZh,
   onLogout,
-  onOpenChangePassword,
+  onOpenAccountSettings,
   onOpenLogin,
   onOpenRegister,
   onToggleLanguage,
@@ -117,10 +117,10 @@ export function DashboardHeader({
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false);
-                    onOpenChangePassword();
+                    onOpenAccountSettings();
                   }}
                 >
-                  {t("修改密码", "Change Password")}
+                  {t("账号设置", "Account Settings")}
                 </button>
                 <button
                   type="button"

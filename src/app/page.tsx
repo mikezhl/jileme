@@ -118,6 +118,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   return (
     <DashboardPageClient
       initialUser={{
+        email: user.email,
         id: user.id,
         username: user.username,
       }}
