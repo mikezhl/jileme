@@ -2436,6 +2436,30 @@ a:focus-visible {
 .message-row.self { justify-content: flex-end; }
 .message-row.announcement { justify-content: center; }
 
+.ai-bubble-title {
+  width: 100%;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  margin: 0 0 12px;
+}
+
+.summary-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.summary-list li {
+  margin: 0;
+  padding: 0;
+}
+
 /* Elegant Chat Bubbles */
 .bubble {
   width: fit-content;
@@ -2450,9 +2474,7 @@ a:focus-visible {
   box-shadow: none;
 }
 
-.message-row.other .bubble { border-bottom-left-radius: 2px; }
-.message-row.self .bubble { 
-  border-bottom-right-radius: 2px;
+.message-row.self .bubble {
   background: #f4f4f4;
   color: var(--foreground);
 }
@@ -2464,11 +2486,11 @@ a:focus-visible {
 }
 
 .bubble.analysis {
-  background: #ffffff !important;
-  border: 1px solid #eeeeee !important;
+  background: #f6faff !important;
+  border: 1px solid #e2ebf7 !important;
   color: #000000 !important;
   border-radius: 12px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.05);
   max-width: min(95%, 720px);
 }
 
@@ -2487,34 +2509,39 @@ a:focus-visible {
 }
 
 .bubble.summary {
-  background: #ffffff;
-  border: 1px solid var(--line);
-  color: var(--foreground);
+  background: #f6faff;
+  border: 1px solid #e2ebf7;
+  color: #000000;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.05);
 }
 
 .bubble.archive-other {
-  background: #fafafa;
-  border: 1px solid #e7e7e7;
-  color: #4b5563;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--foreground);
   border-radius: 12px;
   box-shadow: none;
   max-width: min(88%, 680px);
 }
 
 .bubble.archive-other .bubble-meta {
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .bubble.archive-other strong,
 .bubble.archive-other time,
 .bubble.archive-other p {
-  color: #4b5563;
+  color: var(--foreground);
+}
+
+.bubble.archive-other .bubble-meta time {
+  opacity: 1;
 }
 
 .bubble.archive-other .bubble-source {
-  background: transparent;
-  border: 1px solid #d8d8d8;
-  color: #6b7280;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  color: var(--foreground);
 }
 
 .bubble-meta {

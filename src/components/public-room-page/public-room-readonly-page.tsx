@@ -186,11 +186,6 @@ function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
   if (!content) {
     return (
       <article className="bubble analysis announcement">
-        <header className="bubble-meta">
-          <strong>{getMessageTitle(message)}</strong>
-          <span className="bubble-source">{getMessageSourceLabel(message)}</span>
-          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-        </header>
         <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
           {message.content}
         </p>
@@ -205,12 +200,6 @@ function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
 
   return (
     <article className="bubble analysis announcement">
-      <header className="bubble-meta">
-        <strong>{getMessageTitle(message)}</strong>
-        <span className="bubble-source">{getMessageSourceLabel(message)}</span>
-        <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-      </header>
-
       <div className="analysis-grid">
         <div className="analysis-side-section">
           <div className="analysis-side-head">
@@ -253,11 +242,7 @@ function ReadonlySummaryMessage({ message }: { message: ChatMessage }) {
   if (!summary) {
     return (
       <article className="bubble summary announcement">
-        <header className="bubble-meta">
-          <strong>{getMessageTitle(message)}</strong>
-          <span className="bubble-source">{getMessageSourceLabel(message)}</span>
-          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-        </header>
+        <div className="ai-bubble-title">AI：最终总结</div>
         <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</p>
       </article>
     );
@@ -265,16 +250,7 @@ function ReadonlySummaryMessage({ message }: { message: ChatMessage }) {
 
   return (
     <article className="bubble summary announcement">
-      <header className="bubble-meta">
-        <strong>{getMessageTitle(message)}</strong>
-        <span className="bubble-source">{getMessageSourceLabel(message)}</span>
-        <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-      </header>
-
-      {summary.focus ? (
-        <div style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "8px" }}>{summary.focus}</div>
-      ) : null}
-
+      <div className="ai-bubble-title">AI：最终总结</div>
       {summary.overall ? (
         <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{summary.overall}</p>
       ) : null}
@@ -282,31 +258,31 @@ function ReadonlySummaryMessage({ message }: { message: ChatMessage }) {
       <div className="analysis-grid" style={{ marginTop: "12px" }}>
         <div className="analysis-side-section">
           <div className="analysis-side-head">
-            <div className="analysis-side-h">A方要点</div>
+            <div className="analysis-side-h">A方观点</div>
           </div>
           {summary.sideAPoints.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+            <ul className="summary-list">
               {summary.sideAPoints.map((item, index) => (
                 <li key={`readonly-side-a-${index}`}>{item}</li>
               ))}
             </ul>
           ) : (
-            <p className="analysis-insight">暂无要点</p>
+            <p className="analysis-insight">暂无观点</p>
           )}
         </div>
 
         <div className="analysis-side-section">
           <div className="analysis-side-head">
-            <div className="analysis-side-h">B方要点</div>
+            <div className="analysis-side-h">B方观点</div>
           </div>
           {summary.sideBPoints.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+            <ul className="summary-list">
               {summary.sideBPoints.map((item, index) => (
                 <li key={`readonly-side-b-${index}`}>{item}</li>
               ))}
             </ul>
           ) : (
-            <p className="analysis-insight">暂无要点</p>
+            <p className="analysis-insight">暂无观点</p>
           )}
         </div>
       </div>
@@ -317,7 +293,7 @@ function ReadonlySummaryMessage({ message }: { message: ChatMessage }) {
             <div className="analysis-side-h">A方亮点</div>
           </div>
           {summary.sideAHighlights.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+            <ul className="summary-list">
               {summary.sideAHighlights.map((item, index) => (
                 <li key={`readonly-side-a-highlight-${index}`}>{item}</li>
               ))}
@@ -332,7 +308,7 @@ function ReadonlySummaryMessage({ message }: { message: ChatMessage }) {
             <div className="analysis-side-h">B方亮点</div>
           </div>
           {summary.sideBHighlights.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+            <ul className="summary-list">
               {summary.sideBHighlights.map((item, index) => (
                 <li key={`readonly-side-b-highlight-${index}`}>{item}</li>
               ))}

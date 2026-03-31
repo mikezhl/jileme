@@ -144,17 +144,32 @@ type RoomPageViewProps = {
 type AnalysisMessageProps = {
   analysisViewState: AnalysisViewState;
   isArchiveRoom: boolean;
-  language: UiLanguage;
   message: ChatMessage;
   onToggleRawMessage: (nextId: string | null) => void;
   rawMessageId: string | null;
   t: RoomPageTranslate;
 };
 
+const rawJsonPreviewStyle = {
+  fontSize: "0.75rem",
+  overflowX: "auto",
+  background: "rgba(0,0,0,0.03)",
+  padding: "10px",
+  borderRadius: "8px",
+  color: "#000",
+} satisfies CSSProperties;
+
+function formatRawJsonPreview(content: string) {
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
+}
+
 function AnalysisMessage({
   analysisViewState,
   isArchiveRoom,
-  language,
   message,
   onToggleRawMessage,
   rawMessageId,
@@ -182,18 +197,7 @@ function AnalysisMessage({
     return (
       <div className="bubble analysis">
         {isRaw ? (
-          <pre
-            style={
-              {
-                fontSize: "0.75rem",
-                overflowX: "auto",
-                background: "rgba(0,0,0,0.03)",
-                padding: "10px",
-                borderRadius: "8px",
-                color: "#000",
-              } satisfies CSSProperties
-            }
-          >
+          <pre style={rawJsonPreviewStyle}>
             {JSON.stringify(data, null, 2)}
           </pre>
         ) : (
@@ -248,10 +252,6 @@ function AnalysisMessage({
   } catch {
     return (
       <div className="bubble analysis">
-        <header className="bubble-meta">
-          <strong>{t("AI 分析", "AI Analysis")}</strong>
-          <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
-        </header>
         <p>{message.content}</p>
       </div>
     );
@@ -259,103 +259,121 @@ function AnalysisMessage({
 }
 
 function SummaryMessage({
-  language,
   message,
+  onToggleRawMessage,
+  rawMessageId,
   t,
-}: Pick<RoomPageViewProps, "language" | "t"> & { message: ChatMessage }) {
+}: Pick<RoomPageViewProps, "t"> & {
+  message: ChatMessage;
+  onToggleRawMessage: (nextId: string | null) => void;
+  rawMessageId: string | null;
+}) {
   const summary = parseFinalSummaryMessage(message);
+  const isRaw = rawMessageId === message.id;
   if (!summary) {
     return (
       <article className="bubble summary announcement">
-        <header className="bubble-meta">
-          <strong>{t("最终总结", "Final Summary")}</strong>
-          <span className="bubble-source">{t("总", "S")}</span>
-          <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
-        </header>
-        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</p>
+        <div className="ai-bubble-title">{t("AI：最终总结", "AI: Final Summary")}</div>
+        {isRaw ? (
+          <pre style={rawJsonPreviewStyle}>{formatRawJsonPreview(message.content)}</pre>
+        ) : (
+          <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</p>
+        )}
+        <button
+          className="raw-toggle"
+          onClick={() => onToggleRawMessage(isRaw ? null : message.id)}
+          type="button"
+        >
+          {isRaw ? t("查看精简版", "Minimal") : t("查看原文", "Raw JSON")}
+        </button>
       </article>
     );
   }
 
   return (
     <article className="bubble summary announcement">
-      <header className="bubble-meta">
-        <strong>{t("最终总结", "Final Summary")}</strong>
-        <span className="bubble-source">{t("总", "S")}</span>
-        <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
-      </header>
+      <div className="ai-bubble-title">{t("AI：最终总结", "AI: Final Summary")}</div>
+      {isRaw ? (
+        <pre style={rawJsonPreviewStyle}>{formatRawJsonPreview(message.content)}</pre>
+      ) : (
+        <>
+          {summary.overall ? (
+            <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{summary.overall}</p>
+          ) : null}
 
-      {summary.focus ? (
-        <div style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "8px" }}>{summary.focus}</div>
-      ) : null}
+          <div className="analysis-grid" style={{ marginTop: "12px" }}>
+            <div className="analysis-side-section">
+              <div className="analysis-side-head">
+                <div className="analysis-side-h">{t("A方观点", "Side A Arguments")}</div>
+              </div>
+              {summary.sideAPoints.length > 0 ? (
+                <ul className="summary-list">
+                  {summary.sideAPoints.map((item, index) => (
+                    <li key={`side-a-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="analysis-insight">{t("暂无观点", "No arguments yet")}</p>
+              )}
+            </div>
 
-      {summary.overall ? (
-        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{summary.overall}</p>
-      ) : null}
-
-      <div className="analysis-grid" style={{ marginTop: "12px" }}>
-        <div className="analysis-side-section">
-          <div className="analysis-side-head">
-            <div className="analysis-side-h">{t("A方要点", "Side A")}</div>
+            <div className="analysis-side-section">
+              <div className="analysis-side-head">
+                <div className="analysis-side-h">{t("B方观点", "Side B Arguments")}</div>
+              </div>
+              {summary.sideBPoints.length > 0 ? (
+                <ul className="summary-list">
+                  {summary.sideBPoints.map((item, index) => (
+                    <li key={`side-b-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="analysis-insight">{t("暂无观点", "No arguments yet")}</p>
+              )}
+            </div>
           </div>
-          {summary.sideAPoints.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
-              {summary.sideAPoints.map((item, index) => (
-                <li key={`side-a-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="analysis-insight">{t("暂无要点", "No points yet")}</p>
-          )}
-        </div>
 
-        <div className="analysis-side-section">
-          <div className="analysis-side-head">
-            <div className="analysis-side-h">{t("B方要点", "Side B")}</div>
-          </div>
-          {summary.sideBPoints.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
-              {summary.sideBPoints.map((item, index) => (
-                <li key={`side-b-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="analysis-insight">{t("暂无要点", "No points yet")}</p>
-          )}
-        </div>
-      </div>
+          <div className="analysis-grid" style={{ marginTop: "12px" }}>
+            <div className="analysis-side-section">
+              <div className="analysis-side-head">
+                <div className="analysis-side-h">{t("A方亮点", "Side A Highlights")}</div>
+              </div>
+              {summary.sideAHighlights.length > 0 ? (
+                <ul className="summary-list">
+                  {summary.sideAHighlights.map((item, index) => (
+                    <li key={`side-a-highlight-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="analysis-insight">{t("暂无亮点", "No highlights yet")}</p>
+              )}
+            </div>
 
-      <div className="analysis-grid" style={{ marginTop: "12px" }}>
-        <div className="analysis-side-section">
-          <div className="analysis-side-head">
-            <div className="analysis-side-h">{t("A方亮点", "Side A Highlights")}</div>
+            <div className="analysis-side-section">
+              <div className="analysis-side-head">
+                <div className="analysis-side-h">{t("B方亮点", "Side B Highlights")}</div>
+              </div>
+              {summary.sideBHighlights.length > 0 ? (
+                <ul className="summary-list">
+                  {summary.sideBHighlights.map((item, index) => (
+                    <li key={`side-b-highlight-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="analysis-insight">{t("暂无亮点", "No highlights yet")}</p>
+              )}
+            </div>
           </div>
-          {summary.sideAHighlights.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
-              {summary.sideAHighlights.map((item, index) => (
-                <li key={`side-a-highlight-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="analysis-insight">{t("暂无亮点", "No highlights yet")}</p>
-          )}
-        </div>
+        </>
+      )}
 
-        <div className="analysis-side-section">
-          <div className="analysis-side-head">
-            <div className="analysis-side-h">{t("B方亮点", "Side B Highlights")}</div>
-          </div>
-          {summary.sideBHighlights.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
-              {summary.sideBHighlights.map((item, index) => (
-                <li key={`side-b-highlight-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="analysis-insight">{t("暂无亮点", "No highlights yet")}</p>
-          )}
-        </div>
-      </div>
+      <button
+        className="raw-toggle"
+        onClick={() => onToggleRawMessage(isRaw ? null : message.id)}
+        type="button"
+      >
+        {isRaw ? t("查看精简版", "Minimal") : t("查看原文", "Raw JSON")}
+      </button>
     </article>
   );
 }
@@ -2306,7 +2324,6 @@ export function RoomPageView({
                       <AnalysisMessage
                         analysisViewState={analysisViewState}
                         isArchiveRoom={isSpecialArchiveRoom}
-                        language={language}
                         message={message}
                         onToggleRawMessage={onToggleRawMessage}
                         rawMessageId={rawMessageId}
@@ -2319,7 +2336,12 @@ export function RoomPageView({
                 if (message.type === "summary") {
                   return (
                     <div key={message.id} className="message-row announcement">
-                      <SummaryMessage language={language} message={message} t={t} />
+                      <SummaryMessage
+                        message={message}
+                        onToggleRawMessage={onToggleRawMessage}
+                        rawMessageId={rawMessageId}
+                        t={t}
+                      />
                     </div>
                   );
                 }
