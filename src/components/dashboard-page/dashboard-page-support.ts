@@ -11,6 +11,8 @@ export type RoomSummary = {
   roomName: string | null;
   status: string;
   isPublic: boolean;
+  isMine: boolean;
+  isImportedArchive: boolean;
   createdAt: string;
   updatedAt: string;
   endedAt: string | null;

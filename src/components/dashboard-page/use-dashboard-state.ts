@@ -501,7 +501,10 @@ export function useDashboardState({
         const action = pendingRoomAction;
         setPendingRoomAction(null);
         await bootstrapRoom(action);
+        return;
       }
+
+      await loadPublicRoomsPage(publicRoomsPage);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : `${authTitle}${t("失败", " failed")}`);
     } finally {
@@ -777,6 +780,7 @@ export function useDashboardState({
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     clearDataAfterLogout();
+    await loadPublicRoomsPage(publicRoomsPage);
   }
 
   function openAccountSettingsModal() {

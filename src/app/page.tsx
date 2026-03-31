@@ -53,7 +53,9 @@ type HomePageProps = {
 
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
-  const [user, publicRoomsResult] = await Promise.all([getCurrentUser(), getPublicRoomsPage(1)]);
+  const userPromise = getCurrentUser();
+  const publicRoomsResultPromise = userPromise.then((user) => getPublicRoomsPage(1, user?.id ?? null));
+  const [user, publicRoomsResult] = await Promise.all([userPromise, publicRoomsResultPromise]);
   const userProviderKeysMode = getUserProviderKeysMode();
   const linuxDoConnectEnabled = isLinuxDoConnectEnabled();
   const footerText = getHomePageFooterText();
@@ -99,6 +101,20 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             messages: true,
           },
         },
+        messages: {
+          where: {
+            participantId: {
+              startsWith: "archive:",
+            },
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            participantId: true,
+          },
+          take: 1,
+        },
       },
       orderBy: {
         updatedAt: "desc",
@@ -122,6 +138,20 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 messages: true,
               },
             },
+            messages: {
+              where: {
+                participantId: {
+                  startsWith: "archive:",
+                },
+              },
+              orderBy: {
+                createdAt: "asc",
+              },
+              select: {
+                participantId: true,
+              },
+              take: 1,
+            },
           },
         },
       },
@@ -143,9 +173,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         id: user.id,
         username: user.username,
       }}
-      initialCreatedRooms={createdRooms.map(toRoomSummary)}
+      initialCreatedRooms={createdRooms.map((room) => toRoomSummary(room, { currentUserId: user.id }))}
       initialJoinedRooms={joinedRooms.map((entry) => ({
-        ...toRoomSummary(entry.room),
+        ...toRoomSummary(entry.room, { currentUserId: user.id }),
         joinedAt: entry.joinedAt.toISOString(),
       }))}
       initialPublicRooms={publicRoomsResult.rooms}

@@ -29,9 +29,23 @@ type PublicRoomItemProps = {
   t: DashboardTranslate;
 };
 
+function getPublicRoomBadgeLabels(room: RoomSummary, t: DashboardTranslate) {
+  const labels: string[] = [];
+
+  if (room.isMine) {
+    labels.push(t("我的", "Mine"));
+  }
+  if (room.isImportedArchive) {
+    labels.push(t("外部导入", "Imported"));
+  }
+
+  return labels;
+}
+
 function PublicRoomItem({ language, room, t }: PublicRoomItemProps) {
   const roomDisplayName = getRoomDisplayName(room.roomName, room.roomId);
   const showRoomCode = Boolean(room.roomName);
+  const badgeLabels = getPublicRoomBadgeLabels(room, t);
 
   return (
     <li>
@@ -88,7 +102,11 @@ function PublicRoomItem({ language, room, t }: PublicRoomItemProps) {
             <span className="room-list-status" data-status={room.status}>
               {roomStatusLabel(room.status, language)}
             </span>
-            <span className="room-list-status room-list-status-public">{t("公开", "Public")}</span>
+            {badgeLabels.map((label) => (
+              <span key={label} className="room-list-status room-list-status-public">
+                {label}
+              </span>
+            ))}
           </div>
         </div>
       </article>

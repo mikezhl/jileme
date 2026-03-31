@@ -26,6 +26,20 @@ export async function GET() {
               messages: true,
             },
           },
+          messages: {
+            where: {
+              participantId: {
+                startsWith: "archive:",
+              },
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+            select: {
+              participantId: true,
+            },
+            take: 1,
+          },
         },
         orderBy: {
           updatedAt: "desc",
@@ -49,6 +63,20 @@ export async function GET() {
                   messages: true,
                 },
               },
+              messages: {
+                where: {
+                  participantId: {
+                    startsWith: "archive:",
+                  },
+                },
+                orderBy: {
+                  createdAt: "asc",
+                },
+                select: {
+                  participantId: true,
+                },
+                take: 1,
+              },
             },
           },
         },
@@ -60,9 +88,9 @@ export async function GET() {
     ]);
 
     return NextResponse.json({
-      createdRooms: createdRooms.map(toRoomSummary),
+      createdRooms: createdRooms.map((room) => toRoomSummary(room, { currentUserId: user.id })),
       joinedRooms: joinedMemberships.map((membership) => ({
-        ...toRoomSummary(membership.room),
+        ...toRoomSummary(membership.room, { currentUserId: user.id }),
         joinedAt: membership.joinedAt.toISOString(),
       })),
       usage,

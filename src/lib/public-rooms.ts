@@ -11,7 +11,10 @@ export function normalizeRoomsPage(value: number | string | null | undefined) {
   return Math.floor(page);
 }
 
-export async function getPublicRoomsPage(pageInput?: number | string | null) {
+export async function getPublicRoomsPage(
+  pageInput?: number | string | null,
+  currentUserId?: string | null,
+) {
   const requestedPage = normalizeRoomsPage(pageInput);
   const where = {
     isPublic: true,
@@ -33,6 +36,20 @@ export async function getPublicRoomsPage(pageInput?: number | string | null) {
                 messages: true,
               },
             },
+            messages: {
+              where: {
+                participantId: {
+                  startsWith: "archive:",
+                },
+              },
+              orderBy: {
+                createdAt: "asc",
+              },
+              select: {
+                participantId: true,
+              },
+              take: 1,
+            },
           },
           orderBy: {
             updatedAt: "desc",
@@ -42,7 +59,7 @@ export async function getPublicRoomsPage(pageInput?: number | string | null) {
         });
 
   return {
-    rooms: rooms.map(toRoomSummary),
+    rooms: rooms.map((room) => toRoomSummary(room, { currentUserId })),
     page,
     pageSize: PUBLIC_ROOM_PAGE_SIZE,
     totalCount,

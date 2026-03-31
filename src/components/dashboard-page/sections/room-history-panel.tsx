@@ -92,6 +92,11 @@ function RoomHistoryItem({ detailLabel, detailValue, language, room, t }: RoomHi
             {room.isPublic ? (
               <span className="room-list-status room-list-status-public">{t("公开", "Public")}</span>
             ) : null}
+            {room.isImportedArchive ? (
+              <span className="room-list-status room-list-status-public">
+                {t("外部导入", "Imported")}
+              </span>
+            ) : null}
           </div>
         </div>
       </article>
