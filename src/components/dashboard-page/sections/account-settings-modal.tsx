@@ -56,15 +56,18 @@ export function AccountSettingsModal({
   const needsCurrentPassword = !user.email;
 
   return (
-    <div className="auth-modal-overlay" role="dialog" aria-modal="true">
+    <div
+      className="auth-modal-overlay"
+      role="dialog"
+      aria-label={title}
+      aria-modal="true"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section className="auth-modal account-settings-modal">
-        <header className="auth-modal-header">
-          <h2>{title}</h2>
-          <button type="button" className="close-btn" onClick={onClose}>
-            {t("关闭", "Close")}
-          </button>
-        </header>
-
         <div className="account-settings-content">
           <form className="settings-field-block" onSubmit={(event) => void onSubmitChangeUsername(event)}>
             <label htmlFor="account-username" className="settings-field-label">

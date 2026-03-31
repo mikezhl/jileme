@@ -139,7 +139,11 @@ export function DashboardHeader({
               <button type="button" className="ghost-btn" onClick={() => onOpenLogin()}>
                 {t("登录", "Sign In")}
               </button>
-              <button type="button" className="primary-btn" onClick={() => onOpenRegister()}>
+              <button
+                type="button"
+                className="primary-btn header-register-btn"
+                onClick={() => onOpenRegister()}
+              >
                 {t("注册", "Sign Up")}
               </button>
             </>

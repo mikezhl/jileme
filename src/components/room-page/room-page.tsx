@@ -26,7 +26,8 @@ export default function RoomPageClient({
 
   const prepareMicrophoneForCallRef = useRef<(() => Promise<string>) | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const hasSyncedChatScrollRef = useRef(false);
 
   const [chatInput, setChatInput] = useState("");
   const [rawMessageId, setRawMessageId] = useState<string | null>(null);
@@ -96,7 +97,22 @@ export default function RoomPageClient({
   }, [prepareMicrophoneForCall]);
 
   useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
+    const chatScroll = chatScrollRef.current;
+    if (!chatScroll) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      chatScroll.scrollTo({
+        top: chatScroll.scrollHeight,
+        behavior: hasSyncedChatScrollRef.current ? "smooth" : "auto",
+      });
+      hasSyncedChatScrollRef.current = true;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [messages]);
 
   useEffect(() => {
@@ -177,6 +193,7 @@ export default function RoomPageClient({
       canLeaveVoiceCall={canLeaveVoiceCall}
       chatInput={chatInput}
       chatInputRef={chatInputRef}
+      chatScrollRef={chatScrollRef}
       canConnectRoom={canConnectRoom}
       canParticipate={roomMeta.currentUserCanParticipate}
       connectionState={connectionState}
@@ -264,7 +281,6 @@ export default function RoomPageClient({
       roomMeta={roomMeta}
       publicTogglePending={publicTogglePending}
       scores={analysisViewState.scores}
-      scrollAnchorRef={scrollAnchorRef}
       selectedMicId={selectedMicId}
       sendingText={sendingText}
       showEndRoomConfirm={showEndRoomConfirm}

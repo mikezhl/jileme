@@ -293,18 +293,40 @@ a:focus-visible {
   }
 
   .minimal-header-top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: nowrap;
+    padding-top: 20px;
+    padding-bottom: 6px;
   }
 
   .github-icon-link {
     display: none;
   }
+
+  .minimal-brand-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   
   .header-actions {
-    width: 100%;
-    justify-content: flex-start;
+    width: auto;
+    margin-left: auto;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  .header-actions .header-register-btn {
+    display: none;
+  }
+
+  .minimal-header:not(.is-authenticated) .header-actions .ghost-btn {
+    margin-right: 10px;
   }
 
   .minimal-header.is-authenticated {
@@ -361,6 +383,11 @@ a:focus-visible {
 
   .usage-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .details-content.room-history-details {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 }
 
@@ -1452,7 +1479,7 @@ a:focus-visible {
 .room-header-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -1463,15 +1490,17 @@ a:focus-visible {
 }
 
 .room-header-statuses {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
+  flex: none;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .room-header-status-item {
   position: relative;
+  flex: none;
 }
 
 .room-header-mobile-bar {
@@ -1548,27 +1577,24 @@ a:focus-visible {
   }
 
   .room-header.room-header-collapsible:not(.is-mobile-collapsed) .room-header-title-row {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .room-header.room-header-collapsible:not(.is-mobile-collapsed) .room-header-title-row h1 {
-    display: inline;
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
     white-space: normal;
   }
 
   .room-header.room-header-collapsible:not(.is-mobile-collapsed) .room-header-statuses {
-    display: inline;
-    margin-left: 10px;
-  }
-
-  .room-header.room-header-collapsible:not(.is-mobile-collapsed) .room-header-status-item {
-    display: inline-block;
-    vertical-align: middle;
-    margin: 0 8px 4px 0;
-  }
-
-  .room-header.room-header-collapsible:not(.is-mobile-collapsed) .room-header-status-item:last-child {
-    margin-right: 0;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0;
+    max-width: 100%;
   }
 
   .room-header.room-header-collapsible .room-back-link {
@@ -1722,6 +1748,16 @@ a:focus-visible {
   align-items: center;
   min-width: 0;
   overflow: visible;
+}
+
+.room-meta-row-wrapped {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-inline-start: 6px;
+}
+
+.room-meta-row-wrapped > .room-meta-row-anchor {
+  margin-inline-start: -6px;
 }
 
 .room-meta-divider {

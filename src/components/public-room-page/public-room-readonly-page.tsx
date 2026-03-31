@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { getArchiveMessageSide } from "@/lib/archive-room";
@@ -257,24 +260,108 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
   const loginHref = `/?auth=login&next=${encodeURIComponent(nextPath)}`;
   const hasEnded = room.status === "ENDED";
   const hideAnonymousReadonlyNotice = isSpecialArchivePublicRoom(room);
+  const [isMobileHeaderCollapsed, setIsMobileHeaderCollapsed] = useState(false);
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
+  const mobileHeaderToggleLabel = isMobileHeaderCollapsed ? "展开头部" : "收起头部";
+  const sidebarContent = (
+    <>
+      <div className="sidebar-section">
+        <h4>房间信息</h4>
+        <div className="key-status-grid">
+          <span>状态：{getRoomStatusLabel(room.status)}</span>
+          <span>可见性：公开</span>
+          <span>房主：{room.ownerUsername ? `@${room.ownerUsername}` : "未知"}</span>
+          <span>成员：{room.participantCount}</span>
+          <span>消息：{room.messageCount}</span>
+          {room.sourceUrl ? (
+            <span>
+              来源：
+              <a href={room.sourceUrl} target="_blank" rel="noreferrer" style={{ wordBreak: "break-all" }}>
+                {room.sourceUrl}
+              </a>
+            </span>
+          ) : null}
+          <span>最近更新：{formatDateTime(room.updatedAt)}</span>
+          {room.endedAt ? <span>结束时间：{formatDateTime(room.endedAt)}</span> : null}
+        </div>
+      </div>
+
+      <div className="sidebar-section">
+        <h4>访问限制</h4>
+        <div className="overall-insight-box">
+          <p className="analysis-insight" style={{ margin: 0, fontSize: "0.9rem" }}>
+            匿名用户仅查看当前已保存的历史消息。
+          </p>
+          <p className="analysis-insight" style={{ margin: 0, fontSize: "0.9rem" }}>
+            不接入 LiveKit、语音转录、实时分析、轮询更新或发言能力。
+          </p>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <main className="room-page">
       <section className="room-shell room-shell-chat">
-        <header className="room-header">
+        <header className={`room-header room-header-collapsible${isMobileHeaderCollapsed ? " is-mobile-collapsed" : ""}`}>
+          <div className="room-header-mobile-bar">
+            <button
+              type="button"
+              className="room-header-mobile-bar-title room-header-mobile-bar-title-button"
+              title={roomDisplayName}
+              onClick={() => setIsMobileHeaderCollapsed(false)}
+            >
+              {roomDisplayName}
+            </button>
+            <div className="room-header-mobile-bar-controls">
+              <button
+                type="button"
+                className="ghost-btn room-mobile-action-btn room-header-mobile-details-btn"
+                onClick={() => setShowMobileDetails(true)}
+              >
+                详情
+              </button>
+              <button
+                type="button"
+                className="back-icon-btn room-header-collapse-toggle room-header-collapse-toggle-inline"
+                aria-expanded={!isMobileHeaderCollapsed}
+                aria-label={mobileHeaderToggleLabel}
+                title={mobileHeaderToggleLabel}
+                onClick={() => setIsMobileHeaderCollapsed(false)}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           <div className="room-header-title">
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <div className="room-header-title-row">
               <h1>{roomDisplayName}</h1>
-              <span className="room-list-status" data-status={room.status}>
-                {getRoomStatusLabel(room.status)}
-              </span>
-              <span className="room-list-status room-list-status-public">公开只读</span>
+
+              <div className="room-header-statuses">
+                <span className="room-list-status" data-status={room.status}>
+                  {getRoomStatusLabel(room.status)}
+                </span>
+                <span className="room-list-status room-list-status-public">公开只读</span>
+              </div>
             </div>
 
-            <div className="room-meta-row" style={{ flexWrap: "wrap" }}>
+            <div className="room-meta-row room-meta-row-wrapped">
               <RoomIdCopyButton
                 ariaLabel={`复制房间号 ${room.roomId}`}
-                className="room-id-copy-button room-header-code"
+                className="room-id-copy-button room-header-code room-meta-row-anchor"
                 copiedLabel="复制成功"
                 roomId={room.roomId}
                 title="点击复制房间号"
@@ -297,30 +384,53 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
           </div>
 
           <Link className="room-back-link" href="/" title="返回首页">
-            <span className="desktop-only ghost-btn" style={{ height: "40px" }}>
+            <span className="ghost-btn room-header-short-action" style={{ height: "40px" }}>
               返回
-            </span>
-            <span className="mobile-only-flex back-icon-btn">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
             </span>
           </Link>
 
           <div className="room-actions">
-            <Link className="primary-btn" href={loginHref} style={{ height: "40px" }}>
+            <Link
+              className="ghost-btn mobile-only-flex room-mobile-action-btn room-mobile-secondary-action"
+              href="/"
+              title="返回首页"
+            >
+              返回
+            </Link>
+            <button
+              type="button"
+              className="ghost-btn mobile-only-flex room-mobile-action-btn room-mobile-secondary-action"
+              onClick={() => setShowMobileDetails(true)}
+            >
+              详情
+            </button>
+            <Link className="primary-btn desktop-only" href={loginHref} style={{ height: "40px" }}>
               登录后参与
             </Link>
           </div>
+
+          <button
+            type="button"
+            className="back-icon-btn room-header-collapse-toggle"
+            aria-expanded={!isMobileHeaderCollapsed}
+            aria-label={mobileHeaderToggleLabel}
+            title={mobileHeaderToggleLabel}
+            onClick={() => setIsMobileHeaderCollapsed((current) => !current)}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={isMobileHeaderCollapsed ? "M6 9l6 6 6-6" : "M6 15l6-6 6 6"} />
+            </svg>
+          </button>
         </header>
 
         {hideAnonymousReadonlyNotice ? null : (
@@ -402,40 +512,19 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
         </div>
       </section>
 
-      <aside className="room-sidebar">
-          <div className="sidebar-section">
-            <h4>房间信息</h4>
-            <div className="key-status-grid">
-              <span>状态：{getRoomStatusLabel(room.status)}</span>
-              <span>可见性：公开</span>
-              <span>房主：{room.ownerUsername ? `@${room.ownerUsername}` : "未知"}</span>
-              <span>成员：{room.participantCount}</span>
-              <span>消息：{room.messageCount}</span>
-              {room.sourceUrl ? (
-                <span>
-                  来源：
-                  <a href={room.sourceUrl} target="_blank" rel="noreferrer" style={{ wordBreak: "break-all" }}>
-                    {room.sourceUrl}
-                  </a>
-                </span>
-              ) : null}
-              <span>最近更新：{formatDateTime(room.updatedAt)}</span>
-              {room.endedAt ? <span>结束时间：{formatDateTime(room.endedAt)}</span> : null}
-            </div>
-        </div>
+      <aside className="room-sidebar">{sidebarContent}</aside>
 
-        <div className="sidebar-section">
-          <h4>访问限制</h4>
-          <div className="overall-insight-box">
-            <p className="analysis-insight" style={{ margin: 0, fontSize: "0.9rem" }}>
-              匿名用户仅查看当前已保存的历史消息。
-            </p>
-            <p className="analysis-insight" style={{ margin: 0, fontSize: "0.9rem" }}>
-              不接入 LiveKit、语音转录、实时分析、轮询更新或发言能力。
-            </p>
-          </div>
-        </div>
-      </aside>
+      <div
+        className={`mobile-analysis-overlay ${showMobileDetails ? "active" : ""}`}
+        onClick={() => setShowMobileDetails(false)}
+      />
+      <div className={`mobile-analysis-drawer ${showMobileDetails ? "active" : ""}`}>
+        <button className="drawer-close-btn" onClick={() => setShowMobileDetails(false)} type="button">
+          ×
+        </button>
+        <h2 style={{ margin: "0 0 8px", fontSize: "1.4rem", fontWeight: 800 }}>房间详情</h2>
+        {sidebarContent}
+      </div>
     </main>
   );
 }

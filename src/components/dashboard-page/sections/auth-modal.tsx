@@ -48,15 +48,18 @@ export function AuthModal({
   }`;
 
   return (
-    <div className="auth-modal-overlay" role="dialog" aria-modal="true">
+    <div
+      className="auth-modal-overlay"
+      role="dialog"
+      aria-label={authTitle}
+      aria-modal="true"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section className="auth-modal">
-        <header className="auth-modal-header">
-          <h2>{authTitle}</h2>
-          <button type="button" className="close-btn" onClick={onClose}>
-            {t("关闭", "Close")}
-          </button>
-        </header>
-
         <div className="auth-switch-row">
           <button
             type="button"
@@ -161,7 +164,7 @@ export function AuthModal({
         {linuxDoConnectEnabled && authMode === "login" ? (
           <div className="auth-provider-section">
             <a className="ghost-btn auth-provider-btn" href={linuxDoConnectHref}>
-              {t("使用 Linux Do Connect 登录", "Sign in with Linux Do Connect")}
+              {t("Linux Do Connect", "Linux Do Connect")}
             </a>
           </div>
         ) : null}

@@ -53,6 +53,7 @@ type RoomPageViewProps = {
   canParticipate: boolean;
   chatInput: string;
   chatInputRef: RefObject<HTMLTextAreaElement | null>;
+  chatScrollRef: RefObject<HTMLDivElement | null>;
   connectionState: RoomConnectionState;
   endingRoom: boolean;
   isAudienceReadOnly: boolean;
@@ -109,7 +110,6 @@ type RoomPageViewProps = {
     own: number;
     other: number;
   };
-  scrollAnchorRef: RefObject<HTMLDivElement | null>;
   selectedMicId: string;
   sendingText: boolean;
   showEndRoomConfirm: boolean;
@@ -1519,6 +1519,7 @@ export function RoomPageView({
   canParticipate,
   chatInput,
   chatInputRef,
+  chatScrollRef,
   connectionState,
   endingRoom,
   isAudienceReadOnly,
@@ -1569,7 +1570,6 @@ export function RoomPageView({
   roomMeta,
   publicTogglePending,
   scores,
-  scrollAnchorRef,
   selectedMicId,
   sendingText,
   showEndRoomConfirm,
@@ -1784,7 +1784,11 @@ export function RoomPageView({
           </Link>
 
           <div className="room-actions">
-            <Link className="ghost-btn mobile-only-flex room-mobile-action-btn" href="/" title={t("返回", "Back")}>
+            <Link
+              className="ghost-btn mobile-only-flex room-mobile-action-btn room-mobile-secondary-action"
+              href="/"
+              title={t("返回", "Back")}
+            >
               {t("返回", "Back")}
             </Link>
             {showSpeakerSwitchButton && (
@@ -1800,7 +1804,7 @@ export function RoomPageView({
             )}
             <button
               type="button"
-              className="ghost-btn mobile-only-flex room-mobile-action-btn"
+              className="ghost-btn mobile-only-flex room-mobile-action-btn room-mobile-secondary-action"
               onClick={onOpenMobileAnalysis}
             >
               {t("详情", "Details")}
@@ -1850,7 +1854,7 @@ export function RoomPageView({
         )}
 
         <section className="chat-panel">
-          <div className="chat-scroll">
+          <div ref={chatScrollRef} className="chat-scroll">
             {messages.length === 0 ? (
               <p className="empty-chat">{t("暂无对话内容。", "Silence.")}</p>
             ) : (
@@ -1903,7 +1907,6 @@ export function RoomPageView({
                 );
               })
             )}
-            <div ref={scrollAnchorRef} />
           </div>
         </section>
 

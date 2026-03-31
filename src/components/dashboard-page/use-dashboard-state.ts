@@ -186,9 +186,7 @@ export function useDashboardState({
 
   function openAuthModal(mode: NonNullable<typeof authMode>, nextPath?: unknown) {
     switchAuthMode(mode);
-    if (nextPath === null || typeof nextPath === "string") {
-      setAuthNextPath(normalizeNextPath(nextPath));
-    }
+    setAuthNextPath(nextPath === null || typeof nextPath === "string" ? normalizeNextPath(nextPath) : null);
   }
 
   function openLoginModal(nextPath?: string | null) {
@@ -203,7 +201,25 @@ export function useDashboardState({
 
   function closeAuthModal() {
     setAuthMode(null);
+    setAuthNextPath(null);
     resetAuthFeedback();
+
+    if (typeof window !== "undefined") {
+      const currentUrl = new URL(window.location.href);
+      const hadAuthParams =
+        currentUrl.searchParams.has("auth") ||
+        currentUrl.searchParams.has("error") ||
+        currentUrl.searchParams.has("next");
+
+      if (hadAuthParams) {
+        currentUrl.searchParams.delete("auth");
+        currentUrl.searchParams.delete("error");
+        currentUrl.searchParams.delete("next");
+        const nextSearch = currentUrl.searchParams.toString();
+        const nextUrl = `${currentUrl.pathname}${nextSearch ? `?${nextSearch}` : ""}${currentUrl.hash}`;
+        router.replace(nextUrl || "/", { scroll: false });
+      }
+    }
   }
 
   function clearDataAfterLogout() {
