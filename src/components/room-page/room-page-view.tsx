@@ -12,7 +12,7 @@ import {
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
-import { getArchiveMessageSide } from "@/lib/archive-room";
+import { getArchiveMessageSide, isImportedArchiveRoom } from "@/lib/archive-room";
 import { type RoomAnalysisProfilePreference } from "@/lib/room-analysis-profile";
 import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
@@ -291,13 +291,12 @@ function getRoomMemberStatusLabel(
 }
 
 function isSpecialArchiveRoomMeta(roomMeta: RoomMetaState) {
-  const ownerMember = roomMeta.members.find((member) => member.isOwner);
-  return (
-    roomMeta.status === "ENDED" &&
-    roomMeta.isPublic &&
-    Boolean(roomMeta.sourceUrl) &&
-    ownerMember?.username === "system"
-  );
+  return isImportedArchiveRoom({
+    status: roomMeta.status,
+    isPublic: roomMeta.isPublic,
+    analysisEnabled: roomMeta.analysisEnabled,
+    hasArchiveMessages: roomMeta.isArchiveImport,
+  });
 }
 
 function RoomMembersSummary({

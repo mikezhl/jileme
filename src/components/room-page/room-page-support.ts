@@ -113,6 +113,7 @@ export type RoomMetaResponse = {
     status: "ACTIVE" | "ENDED";
     isPublic: boolean;
     analysisEnabled: boolean;
+    isArchiveImport: boolean;
     endedAt: string | null;
     isCreator: boolean;
     ownerPresence: {
@@ -150,6 +151,7 @@ export type RoomMetaState = {
   status: "ACTIVE" | "ENDED";
   isPublic: boolean;
   analysisEnabled: boolean;
+  isArchiveImport: boolean;
   endedAt: string | null;
   isCreator: boolean;
   ownerPresence: {
@@ -215,6 +217,7 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
     status: "ACTIVE",
     isPublic: false,
     analysisEnabled: true,
+    isArchiveImport: false,
     endedAt: null,
     isCreator: false,
     ownerPresence: {

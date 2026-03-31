@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import PublicRoomReadonlyPage from "@/components/public-room-page/public-room-readonly-page";
 import RoomPageClient from "@/components/room-page/room-page";
 import { getCurrentUser } from "@/lib/auth";
+import { isArchiveImportMessage } from "@/lib/archive-room";
 import { toChatMessage } from "@/lib/messages";
 import { prisma } from "@/lib/prisma";
 import { findAccessibleRoom } from "@/lib/rooms";
@@ -52,6 +53,14 @@ export default async function RoomPage({ params }: RoomPageProps) {
     });
 
     if (publicRoom) {
+      const isArchiveImport = publicRoom.messages.some((message) =>
+        isArchiveImportMessage({
+          participantId: message.participantId,
+          externalRef: message.externalRef,
+          roomId: publicRoom.roomId,
+        }),
+      );
+
       return (
         <PublicRoomReadonlyPage
           room={{
@@ -59,6 +68,8 @@ export default async function RoomPage({ params }: RoomPageProps) {
             roomName: publicRoom.name,
             sourceUrl: publicRoom.sourceUrl,
             status: publicRoom.status,
+            analysisEnabled: publicRoom.analysisEnabled,
+            isArchiveImport,
             updatedAt: publicRoom.updatedAt.toISOString(),
             endedAt: publicRoom.endedAt?.toISOString() ?? null,
             messageCount: publicRoom._count.messages,

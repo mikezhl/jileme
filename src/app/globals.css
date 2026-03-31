@@ -1116,6 +1116,10 @@ a:focus-visible {
   width: min(480px, 100%);
 }
 
+.import-room-modal {
+  width: min(680px, 100%);
+}
+
 .auth-modal-header {
   display: flex;
   justify-content: space-between;
@@ -1214,6 +1218,73 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 36px;
+}
+
+.import-room-content {
+  display: grid;
+  gap: 24px;
+}
+
+.import-room-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: import-room-step;
+  display: grid;
+  gap: 18px;
+}
+
+.import-room-steps li {
+  position: relative;
+  padding-left: 28px;
+  color: var(--foreground);
+}
+
+.import-room-steps li::before {
+  content: counter(import-room-step) ".";
+  counter-increment: import-room-step;
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.import-room-steps strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.98rem;
+}
+
+.import-room-steps p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.import-room-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+
+.import-room-links a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  word-break: break-all;
+}
+
+.import-room-file-input {
+  display: none;
+}
+
+.import-room-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .settings-field-block {

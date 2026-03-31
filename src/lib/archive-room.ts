@@ -35,3 +35,36 @@ export function getArchiveMessageSide(participantId?: string | null): DebateReco
 export function isArchiveConversationSide(side: DebateRecordSide | null) {
   return side === "A" || side === "B" || side === "other";
 }
+
+export function isImportedArchiveRoom(options: {
+  status: "ACTIVE" | "ENDED";
+  isPublic?: boolean;
+  analysisEnabled?: boolean | null;
+  hasArchiveMessages?: boolean | null;
+}) {
+  return (
+    options.status === "ENDED" &&
+    (options.isPublic ?? true) &&
+    options.analysisEnabled !== true &&
+    options.hasArchiveMessages === true
+  );
+}
+
+export function isArchiveImportMessage(options: {
+  participantId?: string | null;
+  externalRef?: string | null;
+  roomId?: string | null;
+}) {
+  const participantId = options.participantId?.trim().toLowerCase();
+  if (participantId && participantId.startsWith(ARCHIVE_PARTICIPANT_PREFIX)) {
+    return true;
+  }
+
+  const externalRef = options.externalRef?.trim().toLowerCase();
+  const roomId = options.roomId?.trim().toLowerCase();
+  if (!externalRef || !roomId) {
+    return false;
+  }
+
+  return externalRef.startsWith(`archive:${roomId}:`);
+}

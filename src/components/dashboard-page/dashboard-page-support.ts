@@ -153,6 +153,17 @@ export type StatusResponse<T> = {
   error?: string;
 };
 
+export type ArchiveRoomImportResponse = {
+  roomId: string;
+  path: string;
+  title: string;
+  sourceUrl: string | null;
+  importedCount: number;
+  systemUserCreated: boolean;
+  warnings: string[];
+  error?: string;
+};
+
 export const PROVIDERS: TranscriptionProviderName[] = ["deepgram", "dashscope"];
 export const DASHSCOPE_DEFAULT_MODEL = "qwen3-asr-flash-realtime";
 

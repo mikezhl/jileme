@@ -1,16 +1,30 @@
-# 标准发言记录 -> 公开归档房间 规范
+# 标准发言记录 -> 导入房间规范
 
-本规范描述如何把 `debate-record/v1` 标准发言记录导入为一个只读公开房间。
+本规范描述如何把 `debate-record/v1` 标准发言记录导入为一个公开只读的归档房间。
+
+## 默认入口
+
+默认使用前台导入：
+
+1. 登录后打开右上角用户名菜单
+2. 点击 `导入房间`
+3. 在指引弹窗中填写来源链接
+4. 确认准备步骤后点击 `上传`
+5. 选择一个符合 `debate-record/v1` 的 `record.json`
+6. 导入成功后自动跳转到新创建的房间
+
+当前前台入口要求填写有效的来源链接，并上传标准发言记录文件。
 
 ## 目标房间形态
 
-- 创建者固定为 `@system`
+- 从前台导入时，创建者为当前登录用户
+- 从后台通过命令导入时，创建者由后台导入流程决定
 - 房间创建后即为公开归档房间
 - 房间必须只读
-- 辩手 A 表示正方
-- 辩手 B 表示反方
+- `A` 表示正方
+- `B` 表示反方
 - `other` 发言使用居中的分析风格消息卡片展示
-- 房间侧边栏显示一个额外字段：`来源`
+- 如果导入时提供了来源链接，房间侧边栏显示 `来源`
 
 ## 只读约束
 
@@ -21,14 +35,6 @@
 - `analysisEnabled = false`
 
 这样匿名用户和登录用户都会以只读方式查看历史内容，不会继续参与实时房间流程。
-
-## system 用户
-
-- 若数据库中不存在 `system` 用户，则创建：
-  - `username = system`
-  - `password = system`
-- 若已存在，则直接复用
-- 默认禁止 `system` 从前台登录
 
 ## 输入文件
 
@@ -46,25 +52,30 @@
 }
 ```
 
-## 导入命令
+## 上传前检查
 
-```bash
-pnpm room:import-archive --record "path/to/record.json" --source "https://example.com/source"
-```
+上传前至少确认以下几点：
 
-可选覆盖标题：
-
-```bash
-pnpm room:import-archive --record "path/to/record.json" --source "https://example.com/source" --title "自定义标题"
-```
+1. JSON 可以直接被解析
+2. `schemaVersion` 固定为 `debate-record/v1`
+3. `title` 非空，且适合作为房间标题直接展示
+4. 前台导入时已准备好有效的来源链接
+5. `turns` 是非空数组
+6. `turns[].side` 只能是 `A`、`B`、`other`
+7. `turns[].content` 都是非空字符串
+8. `A` 的 `speaker` 应统一为 `正方`
+9. `B` 的 `speaker` 应统一为 `反方`
+10. 相邻且同角色的碎片发言已经尽量在生成 `record.json` 时合并
 
 ## 导入映射规则
 
 ### 房间级字段
 
 - `title` -> `Room.name`
-- `--source` -> `Room.sourceUrl`
-- `createdById` -> `system` 用户 id
+- `createdById`
+  - 前台导入时使用当前登录用户
+  - 后台命令导入时由后台导入流程决定
+- 前台导入时必须提供 `sourceUrl`，后台命令导入时可选 -> `Room.sourceUrl`
 
 ### 消息级字段
 
@@ -114,17 +125,35 @@ pnpm room:import-archive --record "path/to/record.json" --source "https://exampl
 }
 ```
 
-导入仍然允许继续，但命令行会给出警告
+导入仍然允许继续，但调用方应把这些 `notes` 当作警告信息保留
 
-## 命令输出
+## CLI 备用入口
 
-导入成功后输出至少包括：
+如需在前台之外导入，可继续使用命令行：
+
+```bash
+pnpm room:import-archive --record "path/to/record.json"
+```
+
+可选参数：
+
+```bash
+pnpm room:import-archive --record "path/to/record.json" --source "https://example.com/source" --title "自定义标题"
+```
+
+- `--source` 可选
+- 前台导入时来源链接必填；这里只针对后台 CLI 入口
+- `--title` 可选；不提供时默认使用记录中的 `title`
+
+## 成功结果
+
+导入成功后至少应返回：
 
 - 房间号
 - 访问路径
 - 房间标题
 - 导入消息数
-- 来源链接
+- 如果有来源链接，则返回来源链接
 
 ## 实施前置步骤
 

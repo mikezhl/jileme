@@ -48,6 +48,7 @@ export async function GET(_request: Request, context: RouteContext) {
         status: runtimeInfo.room.status,
         isPublic: runtimeInfo.room.isPublic,
         analysisEnabled: runtimeInfo.room.analysisEnabled,
+        isArchiveImport: runtimeInfo.isArchiveImport,
         endedAt: runtimeInfo.room.endedAt?.toISOString() ?? null,
         isCreator: runtimeInfo.isCreator,
         ownerPresence: {

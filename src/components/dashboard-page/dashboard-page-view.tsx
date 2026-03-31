@@ -4,6 +4,7 @@ import { type DashboardTranslate } from "./dashboard-page-support";
 import { AccountSettingsModal } from "./sections/account-settings-modal";
 import { AuthModal } from "./sections/auth-modal";
 import { DashboardHeader } from "./sections/dashboard-header";
+import { ImportRoomModal } from "./sections/import-room-modal";
 import { LivekitSettingsPanel } from "./sections/livekit-settings-panel";
 import { LlmSettingsPanel } from "./sections/llm-settings-panel";
 import { PublicRoomPanel } from "./sections/public-room-panel";
@@ -40,6 +41,7 @@ export function DashboardPageView({
             isAuthenticated={state.isAuthenticated}
             isZh={isZh}
             onOpenAccountSettings={state.openAccountSettingsModal}
+            onOpenImportRoom={state.openImportRoomModal}
             onLogout={state.handleLogout}
             onOpenLogin={state.openLoginModal}
             onOpenRegister={state.openRegisterModal}
@@ -185,6 +187,18 @@ export function DashboardPageView({
           setChangeUsernameForm={state.setChangeUsernameForm}
           t={t}
           user={state.user}
+        />
+      ) : null}
+
+      {state.importRoomOpen ? (
+        <ImportRoomModal
+          importRoomError={state.importRoomError}
+          importRoomLoading={state.importRoomLoading}
+          importRoomSourceUrl={state.importRoomSourceUrl}
+          onClose={state.closeImportRoomModal}
+          onSourceUrlChange={state.setImportRoomSourceUrl}
+          onUpload={state.importArchiveRoom}
+          t={t}
         />
       ) : null}
     </>

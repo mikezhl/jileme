@@ -10,6 +10,7 @@ type DashboardHeaderProps = {
   isZh: boolean;
   onLogout: () => Promise<void>;
   onOpenAccountSettings: () => void;
+  onOpenImportRoom: () => void;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
   onToggleLanguage: () => void;
@@ -22,6 +23,7 @@ export function DashboardHeader({
   isZh,
   onLogout,
   onOpenAccountSettings,
+  onOpenImportRoom,
   onOpenLogin,
   onOpenRegister,
   onToggleLanguage,
@@ -119,6 +121,17 @@ export function DashboardHeader({
                     }}
                   >
                     {t("账号设置", "Account Settings")}
+                  </button>
+                  <button
+                    type="button"
+                    className="user-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenImportRoom();
+                    }}
+                  >
+                    {t("导入房间", "Import Room")}
                   </button>
                   <button
                     type="button"

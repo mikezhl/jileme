@@ -402,6 +402,7 @@ export function useRoomSession({
       status: payload.room.status,
       isPublic: payload.room.isPublic,
       analysisEnabled: payload.room.analysisEnabled,
+      isArchiveImport: payload.room.isArchiveImport,
       endedAt: payload.room.endedAt,
       isCreator: payload.room.isCreator,
       ownerPresence: payload.room.ownerPresence,

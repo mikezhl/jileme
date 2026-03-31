@@ -5,6 +5,7 @@ import { buildRoomProviderModules } from "@/lib/provider-modules";
 import { fromPrismaRoomAnalysisProfile } from "@/lib/room-analysis-profile";
 import { getRoomVoiceRuntimePreferences } from "@/lib/room-voice-preferences";
 import { resolveRoomVoiceRuntimeForOwner } from "@/features/transcription/core/runtime";
+import { isArchiveImportMessage } from "@/lib/archive-room";
 import { prisma } from "@/lib/prisma";
 
 export class RoomAccessError extends Error {
@@ -48,18 +49,39 @@ export function assertRoomNotEnded(status: RoomStatus) {
 
 export async function buildRoomRuntimeInfo(roomId: string, userId: string) {
   const room = await getAccessibleRoomOrThrow(roomId, userId);
-  const owner = room.createdById
-    ? await prisma.user.findUnique({
-        where: { id: room.createdById },
-        select: { username: true },
-      })
-    : null;
-  const [voiceRuntime, llmRuntime] = await Promise.all([
+  const [owner, voiceRuntime, llmRuntime, archiveMessage] = await Promise.all([
+    room.createdById
+      ? prisma.user.findUnique({
+          where: { id: room.createdById },
+          select: { username: true },
+        })
+      : Promise.resolve(null),
     resolveRoomVoiceRuntimeForOwner(
       room.createdById,
       getRoomVoiceRuntimePreferences(room),
     ),
     resolveConversationLlmRuntimeForOwner(room.createdById),
+    prisma.message.findFirst({
+      where: {
+        roomRefId: room.id,
+        OR: [
+          {
+            participantId: {
+              startsWith: "archive:",
+            },
+          },
+          {
+            externalRef: {
+              startsWith: `archive:${room.roomId}:`,
+            },
+          },
+        ],
+      },
+      select: {
+        participantId: true,
+        externalRef: true,
+      },
+    }),
   ]);
   const isCreator = room.createdById === userId;
   const roomVoicePreferences = getRoomVoiceRuntimePreferences(room);
@@ -67,10 +89,19 @@ export async function buildRoomRuntimeInfo(roomId: string, userId: string) {
     profilePreference: fromPrismaRoomAnalysisProfile(room.analysisProfilePreference),
     transcriptionLanguagePreference: roomVoicePreferences.transcriptionLanguagePreference,
   });
+  const isArchiveImport = Boolean(
+    archiveMessage &&
+      isArchiveImportMessage({
+        participantId: archiveMessage.participantId,
+        externalRef: archiveMessage.externalRef,
+        roomId: room.roomId,
+      }),
+  );
 
   return {
     room,
     isCreator,
+    isArchiveImport,
     isEnded: room.status === RoomStatus.ENDED,
     voiceRuntime,
     llmRuntime,

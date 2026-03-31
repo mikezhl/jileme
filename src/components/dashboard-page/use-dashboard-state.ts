@@ -7,6 +7,7 @@ import { isLinuxDoConnectVirtualEmail } from "@/lib/linux-do-connect";
 import { type UiLanguage } from "@/lib/ui-language";
 
 import {
+  type ArchiveRoomImportResponse,
   type ChangePasswordFormState,
   type ChangeUsernameFormState,
   emptyProviderForm,
@@ -124,6 +125,10 @@ export function useDashboardState({
   const [authError, setAuthError] = useState(initialAuthError);
   const [pendingRoomAction, setPendingRoomAction] = useState<RoomAction | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [importRoomOpen, setImportRoomOpen] = useState(false);
+  const [importRoomLoading, setImportRoomLoading] = useState(false);
+  const [importRoomError, setImportRoomError] = useState("");
+  const [importRoomSourceUrl, setImportRoomSourceUrl] = useState("");
   const [changeUsernameForm, setChangeUsernameForm] = useState<ChangeUsernameFormState>(
     emptyUsernameForm(initialUser?.username ?? ""),
   );
@@ -239,10 +244,14 @@ export function useDashboardState({
     setChangePasswordForm(emptyPasswordForm());
     setChangePasswordCodeCountdown(0);
     setAccountSettingsOpen(false);
+    setImportRoomOpen(false);
+    setImportRoomLoading(false);
+    setImportRoomSourceUrl("");
     setLivekitError("");
     setTranscriptionError("");
     setLlmError("");
     setAuthCodeMessage("");
+    setImportRoomError("");
     setChangeUsernameError("");
     setChangeUsernameSuccess("");
     setChangePasswordCodeMessage("");
@@ -270,6 +279,16 @@ export function useDashboardState({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+      }),
+      fallback,
+    );
+  }
+
+  async function postProtectedFormData<T>(url: string, body: FormData, fallback: string) {
+    return readJson<T>(
+      await fetch(url, {
+        method: "POST",
+        body,
       }),
       fallback,
     );
@@ -779,6 +798,57 @@ export function useDashboardState({
     setChangePasswordForm(emptyPasswordForm());
   }
 
+  function openImportRoomModal() {
+    setImportRoomOpen(true);
+    setImportRoomError("");
+    setImportRoomSourceUrl("");
+  }
+
+  function closeImportRoomModal() {
+    if (importRoomLoading) {
+      return;
+    }
+
+    setImportRoomOpen(false);
+    setImportRoomError("");
+    setImportRoomSourceUrl("");
+  }
+
+  async function importArchiveRoom(file: File) {
+    if (!file) {
+      setImportRoomError(t("请选择要导入的 JSON 文件。", "Please choose a JSON file to import."));
+      return;
+    }
+
+    const sourceUrl = importRoomSourceUrl.trim();
+    if (!sourceUrl) {
+      setImportRoomError(t("请输入来源链接。", "Please enter the source URL."));
+      return;
+    }
+
+    setImportRoomLoading(true);
+    setImportRoomError("");
+
+    try {
+      const formData = new FormData();
+      formData.set("record", file);
+      formData.set("sourceUrl", sourceUrl);
+
+      const payload = await postProtectedFormData<ArchiveRoomImportResponse>(
+        "/api/rooms/import-archive",
+        formData,
+        t("导入房间失败", "Failed to import room"),
+      );
+
+      setImportRoomOpen(false);
+      router.push(`/${encodeURIComponent(payload.roomId)}`);
+    } catch (error) {
+      setImportRoomError(error instanceof Error ? error.message : t("导入房间失败", "Failed to import room"));
+    } finally {
+      setImportRoomLoading(false);
+    }
+  }
+
   async function handleChangeUsernameSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) {
@@ -950,6 +1020,7 @@ export function useDashboardState({
     clearLivekit,
     clearTranscription,
     closeAccountSettingsModal,
+    closeImportRoomModal,
     closeAuthModal,
     createdRooms,
     dashboardLoading,
@@ -960,6 +1031,11 @@ export function useDashboardState({
     handleJoinRoom,
     handleLogout,
     hasHistory,
+    importArchiveRoom,
+    importRoomError,
+    importRoomLoading,
+    importRoomOpen,
+    importRoomSourceUrl,
     isAuthenticated,
     joinedRooms,
     linuxDoConnectEnabled,
@@ -973,6 +1049,7 @@ export function useDashboardState({
     llmLoading,
     openLoginModal,
     openAccountSettingsModal,
+    openImportRoomModal,
     openRegisterModal,
     publicRooms,
     publicRoomsError,
@@ -996,6 +1073,7 @@ export function useDashboardState({
     setAuthForm,
     setChangeUsernameForm,
     setChangePasswordForm,
+    setImportRoomSourceUrl,
     setDefaultProvider,
     setLivekitForm,
     setLlmForm,

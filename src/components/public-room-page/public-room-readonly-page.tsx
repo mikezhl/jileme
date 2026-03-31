@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
-import { getArchiveMessageSide } from "@/lib/archive-room";
+import { getArchiveMessageSide, isImportedArchiveRoom } from "@/lib/archive-room";
 import { type ChatMessage } from "@/lib/chat-types";
 import { getRoomDisplayName } from "@/lib/room-name";
 
@@ -14,6 +14,8 @@ type PublicRoomReadonlyPageProps = {
     roomName: string | null;
     sourceUrl: string | null;
     status: "ACTIVE" | "ENDED";
+    analysisEnabled: boolean;
+    isArchiveImport: boolean;
     updatedAt: string;
     endedAt: string | null;
     messageCount: number;
@@ -57,7 +59,11 @@ function getRoomStatusLabel(status: PublicRoomReadonlyPageProps["room"]["status"
 }
 
 function isSpecialArchivePublicRoom(room: PublicRoomReadonlyPageProps["room"]) {
-  return room.status === "ENDED" && room.ownerUsername === "system" && Boolean(room.sourceUrl);
+  return isImportedArchiveRoom({
+    status: room.status,
+    analysisEnabled: room.analysisEnabled,
+    hasArchiveMessages: room.isArchiveImport,
+  });
 }
 
 function getMessageRowClass(message: ChatMessage) {
