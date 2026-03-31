@@ -55,6 +55,7 @@ type RoomPageViewProps = {
   chatInputRef: RefObject<HTMLTextAreaElement | null>;
   chatScrollRef: RefObject<HTMLDivElement | null>;
   connectionState: RoomConnectionState;
+  deletingRoom: boolean;
   endingRoom: boolean;
   isAudienceReadOnly: boolean;
   isCreator: boolean;
@@ -1520,6 +1521,7 @@ export function RoomPageView({
   chatInputRef,
   chatScrollRef,
   connectionState,
+  deletingRoom,
   endingRoom,
   isAudienceReadOnly,
   isCreator,
@@ -1594,6 +1596,33 @@ export function RoomPageView({
     : speakerMode === "self"
       ? t("切换", "Switch")
       : t("退出", "Exit");
+  const ownerDangerAction = isEnded ? "delete" : "end";
+  const ownerDangerPending = ownerDangerAction === "delete" ? deletingRoom : endingRoom;
+  const ownerDangerButtonLabel = ownerDangerPending
+    ? "..."
+    : ownerDangerAction === "delete"
+      ? t("删除房间", "Delete Room")
+      : t("结束房间", "End Room");
+  const ownerDangerButtonClassName =
+    ownerDangerAction === "delete"
+      ? "ghost-btn room-mobile-action-btn"
+      : "destructive-btn room-mobile-action-btn";
+  const ownerDangerConfirmTitle =
+    ownerDangerAction === "delete"
+      ? t("确认删除房间", "Confirm Delete Room")
+      : t("确认结束房间", "Confirm End Room");
+  const ownerDangerConfirmDescription =
+    ownerDangerAction === "delete"
+      ? t(
+          "删除后将永久移除该房间及其历史记录，且无法恢复。是否确认删除？",
+          "This will permanently remove the room and its history. This action cannot be undone. Are you sure you want to delete it?",
+        )
+      : t(
+          "结束后将生成总结报告，房间将无法再进行对话，只能查看对话历史。是否确认结束？",
+          "A summary report will be generated. The room will no longer allow new conversation and will be read-only. Are you sure you want to end?",
+        );
+  const ownerDangerConfirmButtonLabel =
+    ownerDangerAction === "delete" ? t("删除", "Delete") : t("确认", "Confirm");
   const mobileHeaderToggleLabel = isMobileHeaderCollapsed
     ? t("展开头部", "Expand header")
     : t("收起头部", "Collapse header");
@@ -1811,12 +1840,12 @@ export function RoomPageView({
             {isCreator && (
               <button
                 type="button"
-                className="destructive-btn room-mobile-action-btn"
+                className={ownerDangerButtonClassName}
                 style={{ height: "40px" }}
                 onClick={onOpenEndRoomConfirm}
-                disabled={endingRoom || isEnded}
+                disabled={ownerDangerPending}
               >
-                {endingRoom ? "..." : t("结束房间", "End Room")}
+                {ownerDangerButtonLabel}
               </button>
             )}
           </div>
@@ -1979,20 +2008,17 @@ export function RoomPageView({
         <div className="auth-modal-overlay">
           <div className="auth-modal">
             <header className="auth-modal-header">
-              <h2>{t("确认结束房间", "Confirm End Room")}</h2>
+              <h2>{ownerDangerConfirmTitle}</h2>
             </header>
             <div style={{ marginBottom: "24px", lineHeight: "1.6", color: "var(--muted)" }}>
-              {t(
-                "结束后将生成总结报告，房间将无法再进行对话，只能查看对话历史。是否确认结束？",
-                "A summary report will be generated. The room will no longer allow new conversation and will be read-only. Are you sure you want to end?",
-              )}
+              {ownerDangerConfirmDescription}
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
               <button className="ghost-btn" style={{ flex: 1 }} onClick={onCloseEndRoomConfirm} type="button">
                 {t("取消", "Cancel")}
               </button>
               <button className="destructive-btn" style={{ flex: 1 }} onClick={onConfirmEndRoom} type="button">
-                {t("确认", "Confirm")}
+                {ownerDangerConfirmButtonLabel}
               </button>
             </div>
           </div>

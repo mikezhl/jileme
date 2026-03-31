@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { getRoomDisplayName } from "@/lib/room-name";
 import { useUiLanguage } from "@/lib/use-ui-language";
@@ -20,6 +21,7 @@ export default function RoomPageClient({
   userId,
   username,
 }: RoomPageClientProps) {
+  const router = useRouter();
   const { language } = useUiLanguage();
   const isZh = language === "zh";
   const t = useCallback((zh: string, en: string) => (isZh ? zh : en), [isZh]);
@@ -43,6 +45,8 @@ export default function RoomPageClient({
     audioContainerRef,
     connectRoom,
     connectionState,
+    deleteRoom,
+    deletingRoom,
     endConversation,
     endingRoom,
     hasAutoConnectAttempted,
@@ -197,6 +201,7 @@ export default function RoomPageClient({
       canConnectRoom={canConnectRoom}
       canParticipate={roomMeta.currentUserCanParticipate}
       connectionState={connectionState}
+      deletingRoom={deletingRoom}
       endingRoom={endingRoom}
       isAudienceReadOnly={isAudienceReadOnly}
       isCreator={roomMeta.isCreator}
@@ -217,6 +222,15 @@ export default function RoomPageClient({
       onCloseSwitchConfirm={() => setShowSwitchConfirm(false)}
       onConfirmEndRoom={() => {
         setShowEndRoomConfirm(false);
+        if (isEnded) {
+          void (async () => {
+            const didDelete = await deleteRoom();
+            if (didDelete) {
+              router.replace("/");
+            }
+          })();
+          return;
+        }
         void endConversation();
       }}
       onConfirmSwitch={() => {

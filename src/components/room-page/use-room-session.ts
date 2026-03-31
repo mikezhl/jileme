@@ -106,6 +106,7 @@ export function useRoomSession({
   const [roomError, setRoomError] = useState("");
   const [sendingText, setSendingText] = useState(false);
   const [endingRoom, setEndingRoom] = useState(false);
+  const [deletingRoom, setDeletingRoom] = useState(false);
   const [publicTogglePending, setPublicTogglePending] = useState(false);
   const [analysisProfilePending, setAnalysisProfilePending] = useState(false);
   const [analysisTogglePending, setAnalysisTogglePending] = useState(false);
@@ -1224,6 +1225,47 @@ export function useRoomSession({
     t,
   ]);
 
+  const deleteRoom = useCallback(async () => {
+    if (!roomMeta.isCreator || roomMeta.status !== "ENDED") {
+      return false;
+    }
+
+    setDeletingRoom(true);
+    setRoomError("");
+    try {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? t("删除房间失败", "Failed to delete room"));
+      }
+
+      voiceCallStartingRef.current = false;
+      setVoiceCallStarting(false);
+      resetTranscriptionAttachmentState();
+      await disableLocalMicrophone(roomRef.current).catch(() => undefined);
+      disconnectRoom();
+      return true;
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : t("删除房间失败", "Failed to delete room"));
+      return false;
+    } finally {
+      setDeletingRoom(false);
+    }
+  }, [
+    disableLocalMicrophone,
+    disconnectRoom,
+    resetTranscriptionAttachmentState,
+    roomId,
+    roomMeta.isCreator,
+    roomMeta.status,
+    t,
+  ]);
+
   const sendTextMessage = useCallback(
     async (rawContent: string) => {
       const ownerActive = roomMeta.isCreator || roomMeta.ownerPresence.active;
@@ -1502,6 +1544,8 @@ export function useRoomSession({
     audioContainerRef,
     connectRoom,
     connectionState,
+    deleteRoom,
+    deletingRoom,
     endConversation,
     endingRoom,
     hasAutoConnectAttempted,
