@@ -110,6 +110,9 @@ export function useRoomSession({
   const [publicTogglePending, setPublicTogglePending] = useState(false);
   const [analysisProfilePending, setAnalysisProfilePending] = useState(false);
   const [analysisTogglePending, setAnalysisTogglePending] = useState(false);
+  const [archiveAnalysisPending, setArchiveAnalysisPending] = useState(false);
+  const [archiveAnalysisProfileDraft, setArchiveAnalysisProfileDraft] =
+    useState<RoomAnalysisProfilePreference | null>(null);
   const [voiceSettingsPending, setVoiceSettingsPending] = useState(false);
   const [speakerMode, setSpeakerMode] = useState<RoomSpeakerMode>("self");
   const [speakerSwitchPending, setSpeakerSwitchPending] = useState(false);
@@ -129,6 +132,13 @@ export function useRoomSession({
       latestMessageCreatedAtRef.current = latest ? latest.createdAt : null;
       return merged;
     });
+  }, []);
+
+  const replaceMessages = useCallback((incoming: ChatMessage[]) => {
+    const nextMessages = mergeMessages([], incoming);
+    const latest = nextMessages[nextMessages.length - 1];
+    latestMessageCreatedAtRef.current = latest ? latest.createdAt : null;
+    setMessages(nextMessages);
   }, []);
 
   const clearPendingTranscriptionAttachmentWaiter = useCallback((error?: Error) => {
@@ -409,6 +419,7 @@ export function useRoomSession({
       ownerPresence: payload.room.ownerPresence,
       currentUserCanParticipate: payload.room.currentUserCanParticipate,
       members: payload.room.members,
+      archiveAnalysis: payload.room.archiveAnalysis,
       providers: payload.providers,
       features: payload.features,
     });
@@ -416,7 +427,7 @@ export function useRoomSession({
   }, [roomId, t]);
 
   const fetchMessages = useCallback(
-    async (since?: string | null) => {
+    async (since?: string | null, options?: { replace?: boolean }) => {
       const endpoint = new URL(
         `/api/rooms/${encodeURIComponent(roomId)}/messages`,
         window.location.origin,
@@ -431,9 +442,14 @@ export function useRoomSession({
         throw new Error(payload.error ?? t("获取消息失败", "Failed to fetch messages"));
       }
 
+      if (options?.replace) {
+        replaceMessages(payload.messages);
+        return;
+      }
+
       upsertMessages(payload.messages);
     },
-    [roomId, t, upsertMessages],
+    [replaceMessages, roomId, t, upsertMessages],
   );
 
   const waitForTranscriberParticipantConnected = useCallback(
@@ -883,7 +899,17 @@ export function useRoomSession({
       transcriptionProvider?: TranscriptionProviderName;
       transcriptionLanguage?: RoomTranscriptionLanguagePreference;
     }) => {
-      if (!roomMeta.isCreator || voiceSettingsPending || roomMeta.status === "ENDED") {
+      const archiveLanguageOnlyUpdate =
+        roomMeta.isArchiveImport &&
+        roomMeta.status === "ENDED" &&
+        typeof updates.transcriptionLanguage === "string" &&
+        typeof updates.source === "undefined" &&
+        typeof updates.transcriptionProvider === "undefined";
+      if (
+        !roomMeta.isCreator ||
+        voiceSettingsPending ||
+        (roomMeta.status === "ENDED" && !archiveLanguageOnlyUpdate)
+      ) {
         return;
       }
 
@@ -899,6 +925,7 @@ export function useRoomSession({
         const payload = (await response.json()) as {
           providers?: {
             voice: RoomMetaState["providers"]["voice"];
+            analysis?: RoomMetaState["providers"]["analysis"];
           };
           error?: string;
         };
@@ -924,6 +951,7 @@ export function useRoomSession({
           providers: {
             ...current.providers,
             voice: nextVoiceProvider,
+            analysis: payload.providers?.analysis ?? current.providers.analysis,
           },
         }));
         void fetchRoomMeta().catch(() => undefined);
@@ -985,6 +1013,7 @@ export function useRoomSession({
       releaseVoiceRuntimeIfIdle,
       resetTranscriptionAttachmentState,
       roomId,
+      roomMeta.isArchiveImport,
       roomMeta.isCreator,
       roomMeta.providers.voice,
       roomMeta.status,
@@ -1140,6 +1169,166 @@ export function useRoomSession({
     },
     [analysisProfilePending, roomId, roomMeta.isCreator, roomMeta.status, t],
   );
+
+  const updateArchiveAnalysisProfile = useCallback(
+    (profile: RoomAnalysisProfilePreference) => {
+      const archiveStatus = roomMeta.archiveAnalysis.status;
+      if (
+        !roomMeta.isArchiveImport ||
+        roomMeta.status !== "ENDED" ||
+        archiveAnalysisPending ||
+        archiveStatus === "queued" ||
+        archiveStatus === "running" ||
+        archiveStatus === "completed"
+      ) {
+        return;
+      }
+
+      setArchiveAnalysisProfileDraft(profile);
+    },
+    [
+      archiveAnalysisPending,
+      roomMeta.archiveAnalysis.status,
+      roomMeta.isArchiveImport,
+      roomMeta.status,
+    ],
+  );
+
+  const startArchiveAnalysis = useCallback(async () => {
+    const archiveStatus = roomMeta.archiveAnalysis.status;
+    if (
+      !roomMeta.isArchiveImport ||
+      !roomMeta.isCreator ||
+      roomMeta.status !== "ENDED" ||
+      archiveAnalysisPending ||
+      archiveStatus === "queued" ||
+      archiveStatus === "running" ||
+      archiveStatus === "completed"
+    ) {
+      return;
+    }
+
+    setArchiveAnalysisPending(true);
+    setRoomError("");
+
+    try {
+      const selectedProfile =
+        archiveAnalysisProfileDraft ?? roomMeta.providers.analysis.selection.selectedProfile;
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/archive-analysis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile: selectedProfile,
+        }),
+      });
+      const payload = (await response.json()) as {
+        room?: {
+          analysisEnabled: boolean;
+          archiveAnalysis: RoomMetaState["archiveAnalysis"];
+        };
+        providers?: {
+          analysis: RoomMetaState["providers"]["analysis"];
+        };
+        error?: string;
+      };
+
+      if (!response.ok || !payload.room?.archiveAnalysis || !payload.providers?.analysis) {
+        throw new Error(payload.error ?? t("启动归档分析失败", "Failed to start archive analysis"));
+      }
+
+      setRoomMeta((current) => ({
+        ...current,
+        analysisEnabled: payload.room!.analysisEnabled,
+        archiveAnalysis: payload.room!.archiveAnalysis,
+        providers: {
+          ...current.providers,
+          analysis: payload.providers!.analysis,
+        },
+      }));
+      setArchiveAnalysisProfileDraft(null);
+      void fetchMessages(null, { replace: true }).catch(() => undefined);
+    } catch (error) {
+      setRoomError(
+        error instanceof Error ? error.message : t("启动归档分析失败", "Failed to start archive analysis"),
+      );
+    } finally {
+      setArchiveAnalysisPending(false);
+    }
+  }, [
+    archiveAnalysisPending,
+    archiveAnalysisProfileDraft,
+    fetchMessages,
+    roomId,
+    roomMeta.archiveAnalysis.status,
+    roomMeta.isArchiveImport,
+    roomMeta.isCreator,
+    roomMeta.providers.analysis.selection.selectedProfile,
+    roomMeta.status,
+    t,
+  ]);
+
+  const clearArchiveAnalysis = useCallback(async () => {
+    const archiveStatus = roomMeta.archiveAnalysis.status;
+    if (
+      !roomMeta.isArchiveImport ||
+      !roomMeta.isCreator ||
+      roomMeta.status !== "ENDED" ||
+      archiveAnalysisPending ||
+      archiveStatus !== "completed"
+    ) {
+      return;
+    }
+
+    setArchiveAnalysisPending(true);
+    setRoomError("");
+
+    try {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/archive-analysis`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as {
+        room?: {
+          analysisEnabled: boolean;
+          archiveAnalysis: RoomMetaState["archiveAnalysis"];
+        };
+        providers?: {
+          analysis: RoomMetaState["providers"]["analysis"];
+        };
+        error?: string;
+      };
+
+      if (!response.ok || !payload.room?.archiveAnalysis || !payload.providers?.analysis) {
+        throw new Error(payload.error ?? t("清除归档分析失败", "Failed to clear archive analysis"));
+      }
+
+      setRoomMeta((current) => ({
+        ...current,
+        analysisEnabled: payload.room!.analysisEnabled,
+        archiveAnalysis: payload.room!.archiveAnalysis,
+        providers: {
+          ...current.providers,
+          analysis: payload.providers!.analysis,
+        },
+      }));
+      setArchiveAnalysisProfileDraft(null);
+      await fetchMessages(null, { replace: true });
+    } catch (error) {
+      setRoomError(
+        error instanceof Error ? error.message : t("清除归档分析失败", "Failed to clear archive analysis"),
+      );
+    } finally {
+      setArchiveAnalysisPending(false);
+    }
+  }, [
+    archiveAnalysisPending,
+    fetchMessages,
+    roomId,
+    roomMeta.archiveAnalysis.status,
+    roomMeta.isArchiveImport,
+    roomMeta.isCreator,
+    roomMeta.status,
+    t,
+  ]);
 
   const togglePublicRoom = useCallback(async () => {
     if (!roomMeta.isCreator || publicTogglePending) {
@@ -1329,7 +1518,7 @@ export function useRoomSession({
     latestMessageCreatedAtRef.current = null;
     setMessages([]);
     setRoomError("");
-    void Promise.all([fetchRoomMeta(), fetchMessages(null)]).catch((error) => {
+    void Promise.all([fetchRoomMeta(), fetchMessages(null, { replace: true })]).catch((error) => {
       setRoomError(error instanceof Error ? error.message : t("加载房间数据失败", "Failed to load room data"));
     });
   }, [fetchMessages, fetchRoomMeta, t]);
@@ -1343,6 +1532,25 @@ export function useRoomSession({
       window.clearInterval(timer);
     };
   }, [fetchRoomMeta]);
+
+  useEffect(() => {
+    if (
+      !roomMeta.isArchiveImport ||
+      roomMeta.status !== "ENDED" ||
+      roomMeta.archiveAnalysis.status === "idle"
+    ) {
+      return;
+    }
+
+    void fetchMessages(null, { replace: true }).catch(() => undefined);
+  }, [
+    fetchMessages,
+    roomMeta.archiveAnalysis.completedCount,
+    roomMeta.archiveAnalysis.stage,
+    roomMeta.archiveAnalysis.status,
+    roomMeta.isArchiveImport,
+    roomMeta.status,
+  ]);
 
   useEffect(() => {
     micEnabledRef.current = micEnabled;
@@ -1486,6 +1694,24 @@ export function useRoomSession({
   }, [messages]);
 
   useEffect(() => {
+    if (
+      !roomMeta.isArchiveImport ||
+      roomMeta.status !== "ENDED" ||
+      (roomMeta.archiveAnalysis.status !== "queued" &&
+        roomMeta.archiveAnalysis.status !== "running" &&
+        roomMeta.archiveAnalysis.status !== "completed")
+    ) {
+      return;
+    }
+
+    setArchiveAnalysisProfileDraft(null);
+  }, [
+    roomMeta.archiveAnalysis.status,
+    roomMeta.isArchiveImport,
+    roomMeta.status,
+  ]);
+
+  useEffect(() => {
     return () => {
       if (micEnabledRef.current) {
         void releaseVoiceRuntimeIfIdle();
@@ -1539,6 +1765,10 @@ export function useRoomSession({
   ]);
 
   return {
+    archiveAnalysisPending,
+    archiveAnalysisSelectedProfile:
+      archiveAnalysisProfileDraft ?? roomMeta.providers.analysis.selection.selectedProfile,
+    clearArchiveAnalysis,
     analysisProfilePending,
     analysisTogglePending,
     audioContainerRef,
@@ -1561,11 +1791,13 @@ export function useRoomSession({
     setRoomError,
     speakerMode,
     speakerSwitchPending,
+    startArchiveAnalysis,
     startVoiceCall,
     switchSpeakerMode,
     togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
+    updateArchiveAnalysisProfile,
     updateAnalysisProfile,
     updateVoiceSettings,
     voiceCallStarting,

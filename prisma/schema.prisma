@@ -17,6 +17,24 @@ enum MessageType {
 enum AnalysisEventType {
   REALTIME_TRIGGER
   FINAL_SUMMARY_TRIGGER
+  ARCHIVE_GENERATION_TRIGGER
+}
+
+enum ArchiveAnalysisStatus {
+  IDLE
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ArchiveAnalysisStage {
+  IDLE
+  PLANNING
+  REALTIME
+  FINAL_SUMMARY
+  COMPLETED
+  FAILED
 }
 
 enum RoomStatus {
@@ -225,11 +243,19 @@ model RoomAnalysisEvent {
 }
 
 model RoomAnalysisState {
-  roomRefId            String   @id
-  room                 Room     @relation(fields: [roomRefId], references: [id], onDelete: Cascade)
-  lastRealtimeMessageAt DateTime?
-  lastRealtimeMessageId String?
-  lastFinalSummaryAt    DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  roomRefId                     String                @id
+  room                          Room                  @relation(fields: [roomRefId], references: [id], onDelete: Cascade)
+  lastRealtimeMessageAt         DateTime?
+  lastRealtimeMessageId         String?
+  lastFinalSummaryAt            DateTime?
+  archiveAnalysisStatus         ArchiveAnalysisStatus @default(IDLE)
+  archiveAnalysisStage          ArchiveAnalysisStage  @default(IDLE)
+  archiveAnalysisPlannedCount   Int                   @default(0)
+  archiveAnalysisCompletedCount Int                   @default(0)
+  archiveAnalysisError          String?
+  archiveAnalysisRequestedAt    DateTime?
+  archiveAnalysisStartedAt      DateTime?
+  archiveAnalysisCompletedAt    DateTime?
+  createdAt                     DateTime              @default(now())
+  updatedAt                     DateTime              @updatedAt
 }

@@ -15,6 +15,23 @@ export type SummaryConversationInput = {
   fullConversation: string;
 };
 
+export type ArchiveAnalysisPlanningTurnSide = "A" | "B" | "other" | "unknown";
+
+export type ArchiveAnalysisPlanningTurn = {
+  index: number;
+  speakerLabel: string;
+  speakerName: string;
+  side: ArchiveAnalysisPlanningTurnSide;
+  text: string;
+  latestMessageId: string;
+};
+
+export type ArchiveAnalysisPlanningInput = {
+  roomId: string;
+  speakerMap: Record<string, string>;
+  turns: ArchiveAnalysisPlanningTurn[];
+};
+
 export type RealtimeConversationLlmInvocation = {
   mode: "realtime";
   style: string;
@@ -33,9 +50,19 @@ export type SummaryConversationLlmInvocation = {
   runtime: ResolvedConversationLlmRuntime;
 };
 
+export type ArchiveAnalysisPlanningLlmInvocation = {
+  mode: "archive-plan";
+  style: string;
+  prompt: string;
+  outputLanguage: ConversationOutputLanguage;
+  input: ArchiveAnalysisPlanningInput;
+  runtime: ResolvedConversationLlmRuntime;
+};
+
 export type ConversationLlmInvocation =
   | RealtimeConversationLlmInvocation
-  | SummaryConversationLlmInvocation;
+  | SummaryConversationLlmInvocation
+  | ArchiveAnalysisPlanningLlmInvocation;
 
 export type ConversationLlmJson = Record<string, unknown>;
 

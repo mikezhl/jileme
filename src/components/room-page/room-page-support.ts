@@ -75,6 +75,17 @@ export type AnalysisProviderState = {
   };
 };
 
+export type ArchiveAnalysisState = {
+  status: "idle" | "queued" | "running" | "completed" | "failed";
+  stage: "idle" | "planning" | "realtime" | "final_summary" | "completed" | "failed";
+  plannedCount: number;
+  completedCount: number;
+  error: string | null;
+  requestedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
 export type TokenResponse = {
   token: string;
   livekitUrl: string;
@@ -123,6 +134,7 @@ export type RoomMetaResponse = {
     };
     currentUserCanParticipate: boolean;
     members: RoomMemberState[];
+    archiveAnalysis: ArchiveAnalysisState;
   };
   providers: {
     voice: VoiceProviderState;
@@ -161,6 +173,7 @@ export type RoomMetaState = {
   };
   currentUserCanParticipate: boolean;
   members: RoomMemberState[];
+  archiveAnalysis: ArchiveAnalysisState;
   providers: {
     voice: VoiceProviderState;
     analysis: AnalysisProviderState;
@@ -210,6 +223,19 @@ export const TRANSCRIBER_PARTICIPANT_TIMEOUT_MS = 12 * 1000;
 export const TRANSCRIPTION_ATTACHMENT_TIMEOUT_MS = 5 * 1000;
 export const ANALYSIS_SIDE_ORDER: RealtimeAnalysisSide[] = ["A", "B"];
 
+export function createInitialArchiveAnalysisState(): ArchiveAnalysisState {
+  return {
+    status: "idle",
+    stage: "idle",
+    plannedCount: 0,
+    completedCount: 0,
+    error: null,
+    requestedAt: null,
+    startedAt: null,
+    completedAt: null,
+  };
+}
+
 export function createInitialRoomMetaState(initialRoomName: string | null): RoomMetaState {
   return {
     roomName: initialRoomName,
@@ -227,6 +253,7 @@ export function createInitialRoomMetaState(initialRoomName: string | null): Room
     },
     currentUserCanParticipate: false,
     members: [],
+    archiveAnalysis: createInitialArchiveAnalysisState(),
     providers: {
       voice: {
         providedBy: {

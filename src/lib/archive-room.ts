@@ -44,7 +44,6 @@ export function isImportedArchiveRoom(options: {
 }) {
   return (
     options.status === "ENDED" &&
-    (options.isPublic ?? true) &&
     options.analysisEnabled !== true &&
     options.hasArchiveMessages === true
   );

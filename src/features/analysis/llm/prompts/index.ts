@@ -4,8 +4,9 @@ import buildRealtimeDefaultPrompt from "./realtime/default";
 import buildRealtimeHumorPrompt from "./realtime/humor";
 import buildSummaryDefaultPrompt from "./summary/default";
 import buildSummaryHumorPrompt from "./summary/humor";
+import buildArchivePlanDefaultPrompt from "./archive-plan/default";
 
-export type PromptMode = "realtime" | "summary";
+export type PromptMode = "realtime" | "summary" | "archive-plan";
 
 type PromptBuilder = (outputLanguage: ConversationOutputLanguage) => string;
 
@@ -17,6 +18,10 @@ const promptRegistry: Record<PromptMode, Record<RoomAnalysisProfilePreference, P
   summary: {
     default: buildSummaryDefaultPrompt,
     humor: buildSummaryHumorPrompt,
+  },
+  "archive-plan": {
+    default: buildArchivePlanDefaultPrompt,
+    humor: buildArchivePlanDefaultPrompt,
   },
 };
 

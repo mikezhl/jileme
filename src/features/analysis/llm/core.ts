@@ -17,6 +17,7 @@ import {
   ConversationLlmProvider,
   ConversationLlmJson,
   ConversationLlmInvocationResult,
+  ArchiveAnalysisPlanningInput,
   RealtimeConversationInput,
   SummaryConversationInput,
 } from "./types";
@@ -66,32 +67,39 @@ function getProvider(providerName: ConversationLlmProviderName): ConversationLlm
 }
 
 function buildFallbackConversationContent(
-  mode: "realtime" | "summary",
+  mode: "realtime" | "summary" | "archive-plan",
   errorMessage: string,
 ): ConversationLlmJson {
   if (mode === "realtime") {
     return buildEmptyRealtimeAnalysisContent(errorMessage);
   }
 
+  if (mode === "archive-plan") {
+    return {
+      type: "archive-analysis-plan",
+      endTurnIndexes: [],
+      error: errorMessage,
+    };
+  }
+
   return {
     type: "final-summary",
     focus: "",
-    insights: [],
     overall: "",
     side_a_points: [],
     side_b_points: [],
-    open_questions: [],
-    next_steps: [],
+    side_a_highlights: [],
+    side_b_highlights: [],
     error: errorMessage,
   };
 }
 
-function getRetryDelays(mode: "realtime" | "summary") {
+function getRetryDelays(mode: "realtime" | "summary" | "archive-plan") {
   return mode === "realtime" ? REALTIME_RETRY_DELAYS_MS : SUMMARY_RETRY_DELAYS_MS;
 }
 
 function buildFallbackResult(
-  mode: "realtime" | "summary",
+  mode: "realtime" | "summary" | "archive-plan",
   source: ConversationLlmInvocationResult["source"],
   errorMessage: string,
 ): ConversationLlmInvocationResult {
@@ -109,7 +117,7 @@ function delay(ms: number) {
 }
 
 async function invokeWithRetries(
-  mode: "realtime" | "summary",
+  mode: "realtime" | "summary" | "archive-plan",
   provider: ConversationLlmProvider,
   invocation: Parameters<ConversationLlmProvider["invoke"]>[0],
   source: ConversationLlmInvocationResult["source"],
@@ -245,5 +253,50 @@ export async function invokeConversationSummary(
     });
 
     return buildFallbackResult("summary", source, normalizedError.message);
+  }
+}
+
+export async function invokeArchiveAnalysisPlanner(
+  input: ArchiveAnalysisPlanningInput,
+  ownerUserId?: string | null,
+  runtimeOverride?: ResolvedConversationLlmRuntime,
+  promptOptions?: ConversationAnalysisPromptOptions,
+): Promise<ConversationLlmInvocationResult> {
+  const promptSelection = resolveConversationAnalysisPromptSelection(promptOptions);
+  const promptResolution = resolvePromptTemplate(
+    "archive-plan",
+    promptSelection.profile,
+    promptSelection.outputLanguage,
+  );
+  let source: ConversationLlmInvocationResult["source"] = "unavailable";
+
+  try {
+    const runtime = runtimeOverride ?? (await resolveConversationLlmRuntimeForOwner(ownerUserId));
+    source = runtime.source;
+    const provider = getProvider(runtime.provider);
+
+    return await invokeWithRetries(
+      "archive-plan",
+      provider,
+      {
+        mode: "archive-plan",
+        style: promptResolution.profile,
+        prompt: promptResolution.prompt,
+        outputLanguage: promptResolution.outputLanguage,
+        input,
+        runtime,
+      },
+      source,
+    );
+  } catch (error) {
+    const normalizedError = normalizeConversationLlmError(error);
+
+    console.error("[conversation-llm] Falling back to empty output", {
+      mode: "archive-plan",
+      stage: "runtime",
+      error: normalizedError.message,
+    });
+
+    return buildFallbackResult("archive-plan", source, normalizedError.message);
   }
 }

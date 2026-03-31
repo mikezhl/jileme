@@ -6,6 +6,7 @@ import { useState } from "react";
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { getArchiveMessageSide, isImportedArchiveRoom } from "@/lib/archive-room";
 import { type ChatMessage } from "@/lib/chat-types";
+import { parseFinalSummaryMessage } from "@/lib/final-summary";
 import { getRoomDisplayName } from "@/lib/room-name";
 
 type PublicRoomReadonlyPageProps = {
@@ -247,9 +248,107 @@ function ReadonlyAnalysisMessage({ message }: { message: ChatMessage }) {
   );
 }
 
+function ReadonlySummaryMessage({ message }: { message: ChatMessage }) {
+  const summary = parseFinalSummaryMessage(message);
+  if (!summary) {
+    return (
+      <article className="bubble summary announcement">
+        <header className="bubble-meta">
+          <strong>{getMessageTitle(message)}</strong>
+          <span className="bubble-source">{getMessageSourceLabel(message)}</span>
+          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+        </header>
+        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</p>
+      </article>
+    );
+  }
+
+  return (
+    <article className="bubble summary announcement">
+      <header className="bubble-meta">
+        <strong>{getMessageTitle(message)}</strong>
+        <span className="bubble-source">{getMessageSourceLabel(message)}</span>
+        <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+      </header>
+
+      {summary.focus ? (
+        <div style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "8px" }}>{summary.focus}</div>
+      ) : null}
+
+      {summary.overall ? (
+        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{summary.overall}</p>
+      ) : null}
+
+      <div className="analysis-grid" style={{ marginTop: "12px" }}>
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">A方要点</div>
+          </div>
+          {summary.sideAPoints.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideAPoints.map((item, index) => (
+                <li key={`readonly-side-a-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">暂无要点</p>
+          )}
+        </div>
+
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">B方要点</div>
+          </div>
+          {summary.sideBPoints.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideBPoints.map((item, index) => (
+                <li key={`readonly-side-b-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">暂无要点</p>
+          )}
+        </div>
+      </div>
+
+      <div className="analysis-grid" style={{ marginTop: "12px" }}>
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">A方亮点</div>
+          </div>
+          {summary.sideAHighlights.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideAHighlights.map((item, index) => (
+                <li key={`readonly-side-a-highlight-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">暂无亮点</p>
+          )}
+        </div>
+
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">B方亮点</div>
+          </div>
+          {summary.sideBHighlights.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideBHighlights.map((item, index) => (
+                <li key={`readonly-side-b-highlight-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">暂无亮点</p>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function ReadonlyArchiveOtherMessage({ message }: { message: ChatMessage }) {
   return (
-    <article className="bubble analysis announcement">
+    <article className="bubble archive-other announcement">
       <header className="bubble-meta">
         <strong>{getMessageTitle(message)}</strong>
         <span className="bubble-source">{getMessageSourceLabel(message)}</span>
@@ -470,6 +569,8 @@ export default function PublicRoomReadonlyPage({ room, messages }: PublicRoomRea
                   >
                     {message.type === "analysis" ? (
                       <ReadonlyAnalysisMessage message={message} />
+                    ) : message.type === "summary" ? (
+                      <ReadonlySummaryMessage message={message} />
                     ) : getArchiveMessageSide(message.participantId) === "other" ? (
                       <ReadonlyArchiveOtherMessage message={message} />
                     ) : (

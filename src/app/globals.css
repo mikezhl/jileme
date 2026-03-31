@@ -2347,6 +2347,56 @@ a:focus-visible {
   text-align: right;
 }
 
+.provider-chip-action {
+  flex-shrink: 0;
+  min-width: 72px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, var(--line));
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, white 4%) 0%, var(--surface) 100%);
+  color: var(--foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.provider-chip-action:hover {
+  border-color: color-mix(in srgb, var(--foreground) 24%, var(--line));
+  transform: translateY(-1px);
+}
+
+.provider-chip-action.state-running {
+  border-color: #c2410c;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.provider-chip-action.state-completed {
+  border-color: #166534;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.provider-chip-action.state-failed {
+  border-color: #991b1b;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.provider-chip-action:disabled,
+.provider-chip-action[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
 .chat-panel {
   flex: 1;
   min-height: 0;
@@ -2440,6 +2490,31 @@ a:focus-visible {
   background: #ffffff;
   border: 1px solid var(--line);
   color: var(--foreground);
+}
+
+.bubble.archive-other {
+  background: #fafafa;
+  border: 1px solid #e7e7e7;
+  color: #4b5563;
+  border-radius: 12px;
+  box-shadow: none;
+  max-width: min(88%, 680px);
+}
+
+.bubble.archive-other .bubble-meta {
+  opacity: 0.72;
+}
+
+.bubble.archive-other strong,
+.bubble.archive-other time,
+.bubble.archive-other p {
+  color: #4b5563;
+}
+
+.bubble.archive-other .bubble-source {
+  background: transparent;
+  border: 1px solid #d8d8d8;
+  color: #6b7280;
 }
 
 .bubble-meta {

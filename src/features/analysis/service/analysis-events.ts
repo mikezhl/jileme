@@ -26,6 +26,10 @@ function buildFinalSummaryEventDedupeKey(roomRefId: string) {
   return `final-summary:${roomRefId}`;
 }
 
+function buildArchiveGenerationEventDedupeKey(roomRefId: string) {
+  return `archive-generation:${roomRefId}`;
+}
+
 export async function enqueueRealtimeAnalysisEvent(roomRefId: string, messageId: string) {
   const analysisEnabled = await isRealtimeAnalysisEnabledForRoom(roomRefId);
   if (!analysisEnabled) {
@@ -57,6 +61,25 @@ export async function enqueueFinalSummaryAnalysisEvent(roomRefId: string) {
     },
     update: {
       roomRefId,
+    },
+  });
+}
+
+export async function enqueueArchiveAnalysisGenerationEvent(roomRefId: string) {
+  const dedupeKey = buildArchiveGenerationEventDedupeKey(roomRefId);
+
+  await prisma.roomAnalysisEvent.upsert({
+    where: { dedupeKey },
+    create: {
+      roomRefId,
+      eventType: AnalysisEventType.ARCHIVE_GENERATION_TRIGGER,
+      dedupeKey,
+    },
+    update: {
+      roomRefId,
+      eventType: AnalysisEventType.ARCHIVE_GENERATION_TRIGGER,
+      messageId: null,
+      processedAt: null,
     },
   });
 }

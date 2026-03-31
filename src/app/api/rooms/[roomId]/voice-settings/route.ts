@@ -7,8 +7,12 @@ import {
   resolveRoomVoiceRuntimeForOwner,
 } from "@/features/transcription/core/runtime";
 import { requireApiUser } from "@/lib/auth-guard";
-import { buildRoomVoiceProviderModule } from "@/lib/provider-modules";
+import { isArchiveImportMessage } from "@/lib/archive-room";
+import { resolveConversationLlmRuntimeForOwner } from "@/lib/llm-provider-keys";
+import { buildRoomAnalysisProviderModule, buildRoomVoiceProviderModule } from "@/lib/provider-modules";
 import { prisma } from "@/lib/prisma";
+import { fromPrismaRoomAnalysisProfile } from "@/lib/room-analysis-profile";
+import { fromPrismaRoomTranscriptionLanguage } from "@/lib/room-transcription-language";
 import {
   getRoomVoiceRuntimePreferences,
   normalizeRoomTranscriptionLanguageSetting,
@@ -74,6 +78,7 @@ export async function POST(request: Request, context: RouteContext) {
         voiceSourcePreference: true,
         transcriptionProviderPreference: true,
         transcriptionLanguagePreference: true,
+        analysisProfilePreference: true,
         createdBy: {
           select: {
             username: true,
@@ -94,7 +99,42 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     if (room.status === RoomStatus.ENDED) {
-      return NextResponse.json({ error: "room has ended" }, { status: 403 });
+      const archiveMessage =
+        requestedLanguageProvided && !requestedSourceProvided && !requestedProviderProvided
+          ? await prisma.message.findFirst({
+              where: {
+                roomRefId: room.id,
+                OR: [
+                  {
+                    participantId: {
+                      startsWith: "archive:",
+                    },
+                  },
+                  {
+                    externalRef: {
+                      startsWith: `archive:${room.roomId}:`,
+                    },
+                  },
+                ],
+              },
+              select: {
+                participantId: true,
+                externalRef: true,
+              },
+            })
+          : null;
+      const canUpdateArchiveLanguage = Boolean(
+        archiveMessage &&
+          isArchiveImportMessage({
+            participantId: archiveMessage.participantId,
+            externalRef: archiveMessage.externalRef,
+            roomId: room.roomId,
+          }),
+      );
+
+      if (!canUpdateArchiveLanguage) {
+        return NextResponse.json({ error: "room has ended" }, { status: 403 });
+      }
     }
 
     const currentPreferences = getRoomVoiceRuntimePreferences(room);
@@ -222,19 +262,33 @@ export async function POST(request: Request, context: RouteContext) {
         voiceSourcePreference: true,
         transcriptionProviderPreference: true,
         transcriptionLanguagePreference: true,
+        analysisProfilePreference: true,
       },
     });
 
-    const voiceRuntime = await resolveRoomVoiceRuntimeForOwner(
-      updated.createdById,
-      getRoomVoiceRuntimePreferences(updated),
-    );
+    const [voiceRuntime, llmRuntime] = await Promise.all([
+      resolveRoomVoiceRuntimeForOwner(
+        updated.createdById,
+        getRoomVoiceRuntimePreferences(updated),
+      ),
+      resolveConversationLlmRuntimeForOwner(updated.createdById),
+    ]);
 
     return NextResponse.json({
       providers: {
         voice: buildRoomVoiceProviderModule(
           voiceRuntime,
           room.createdBy?.username ?? null,
+        ),
+        analysis: buildRoomAnalysisProviderModule(
+          llmRuntime,
+          room.createdBy?.username ?? null,
+          {
+            profilePreference: fromPrismaRoomAnalysisProfile(updated.analysisProfilePreference),
+            transcriptionLanguagePreference: fromPrismaRoomTranscriptionLanguage(
+              updated.transcriptionLanguagePreference,
+            ),
+          },
         ),
       },
     });

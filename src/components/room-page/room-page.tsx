@@ -33,6 +33,7 @@ export default function RoomPageClient({
 
   const [chatInput, setChatInput] = useState("");
   const [rawMessageId, setRawMessageId] = useState<string | null>(null);
+  const [showClearArchiveAnalysisConfirm, setShowClearArchiveAnalysisConfirm] = useState(false);
   const [showEndRoomConfirm, setShowEndRoomConfirm] = useState(false);
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
   const [hasConfirmedSwitchOnce, setHasConfirmedSwitchOnce] = useState(false);
@@ -40,6 +41,9 @@ export default function RoomPageClient({
   const [activeStatusTooltip, setActiveStatusTooltip] = useState<ActiveStatusTooltipState>(null);
 
   const {
+    archiveAnalysisPending,
+    archiveAnalysisSelectedProfile,
+    clearArchiveAnalysis,
     analysisProfilePending,
     analysisTogglePending,
     audioContainerRef,
@@ -62,11 +66,13 @@ export default function RoomPageClient({
     setRoomError,
     speakerMode,
     speakerSwitchPending,
+    startArchiveAnalysis,
     startVoiceCall,
     switchSpeakerMode,
     togglePublicRoom,
     toggleRealtimeAnalysis,
     transcriptionState,
+    updateArchiveAnalysisProfile,
     updateAnalysisProfile,
     updateVoiceSettings,
     voiceCallStarting,
@@ -189,6 +195,8 @@ export default function RoomPageClient({
   return (
     <RoomPageView
       activeStatusTooltip={activeStatusTooltip}
+      archiveAnalysisPending={archiveAnalysisPending}
+      archiveAnalysisSelectedProfile={archiveAnalysisSelectedProfile}
       analysisProfilePending={analysisProfilePending}
       analysisTogglePending={analysisTogglePending}
       analysisViewState={analysisViewState}
@@ -217,6 +225,7 @@ export default function RoomPageClient({
       onChatInputChange={setChatInput}
       onChatInputKeyDown={handleChatInputKeyDown}
       onCloseEndRoomConfirm={() => setShowEndRoomConfirm(false)}
+      onCloseClearArchiveAnalysisConfirm={() => setShowClearArchiveAnalysisConfirm(false)}
       onCloseMicSelector={closeMicSelector}
       onCloseMobileAnalysis={() => setShowMobileAnalysis(false)}
       onCloseSwitchConfirm={() => setShowSwitchConfirm(false)}
@@ -232,6 +241,10 @@ export default function RoomPageClient({
           return;
         }
         void endConversation();
+      }}
+      onConfirmClearArchiveAnalysis={() => {
+        setShowClearArchiveAnalysisConfirm(false);
+        void clearArchiveAnalysis();
       }}
       onConfirmSwitch={() => {
         setShowSwitchConfirm(false);
@@ -249,6 +262,7 @@ export default function RoomPageClient({
         void leaveVoiceCall();
       }}
       onOpenEndRoomConfirm={() => setShowEndRoomConfirm(true)}
+      onOpenClearArchiveAnalysisConfirm={() => setShowClearArchiveAnalysisConfirm(true)}
       onOpenMobileAnalysis={() => setShowMobileAnalysis(true)}
       onSelectMic={selectMic}
       onSpeakerSwitchAction={() => {
@@ -261,10 +275,16 @@ export default function RoomPageClient({
       onStartVoiceCall={() => {
         void startVoiceCall();
       }}
+      onStartArchiveAnalysis={() => {
+        void startArchiveAnalysis();
+      }}
       onSubmitTextMessage={submitTextMessage}
       onToggleMicSelector={toggleMicSelector}
       onTogglePublicRoom={() => {
         void togglePublicRoom();
+      }}
+      onUpdateArchiveAnalysisProfile={(profile) => {
+        updateArchiveAnalysisProfile(profile);
       }}
       onUpdateRoomTranscriptionLanguage={(transcriptionLanguage) => {
         void updateVoiceSettings({ transcriptionLanguage });
@@ -297,6 +317,7 @@ export default function RoomPageClient({
       scores={analysisViewState.scores}
       selectedMicId={selectedMicId}
       sendingText={sendingText}
+      showClearArchiveAnalysisConfirm={showClearArchiveAnalysisConfirm}
       showEndRoomConfirm={showEndRoomConfirm}
       showMobileAnalysis={showMobileAnalysis}
       showSwitchConfirm={showSwitchConfirm}

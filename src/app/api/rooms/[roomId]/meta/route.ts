@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getArchiveAnalysisSnapshot } from "@/features/analysis/service/analysis-control";
 import { requireApiUser } from "@/lib/auth-guard";
 import { isRoomSpeakerSwitchEnabled } from "@/lib/env";
 import { getRoomParticipationSnapshot } from "@/lib/room-members";
@@ -14,6 +15,21 @@ type RouteContext = {
 };
 
 export const runtime = "nodejs";
+
+function serializeArchiveAnalysisSnapshot(
+  snapshot: Awaited<ReturnType<typeof getArchiveAnalysisSnapshot>>,
+) {
+  return {
+    status: snapshot.status.toLowerCase(),
+    stage: snapshot.stage.toLowerCase(),
+    plannedCount: snapshot.plannedCount,
+    completedCount: snapshot.completedCount,
+    error: snapshot.error,
+    requestedAt: snapshot.requestedAt?.toISOString() ?? null,
+    startedAt: snapshot.startedAt?.toISOString() ?? null,
+    completedAt: snapshot.completedAt?.toISOString() ?? null,
+  };
+}
 
 export async function GET(_request: Request, context: RouteContext) {
   try {
@@ -30,15 +46,18 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const runtimeInfo = await buildRoomRuntimeInfo(roomId, user.id);
     await touchRoomParticipantHeartbeat(runtimeInfo.room.id, user.id);
-    const participation = await getRoomParticipationSnapshot(
-      runtimeInfo.room.id,
-      runtimeInfo.room.createdById,
-      user.id,
-    );
-    const ownerPresence = await getRoomOwnerPresence(
-      runtimeInfo.room.id,
-      runtimeInfo.room.createdById,
-    );
+    const [participation, ownerPresence, archiveAnalysis] = await Promise.all([
+      getRoomParticipationSnapshot(
+        runtimeInfo.room.id,
+        runtimeInfo.room.createdById,
+        user.id,
+      ),
+      getRoomOwnerPresence(
+        runtimeInfo.room.id,
+        runtimeInfo.room.createdById,
+      ),
+      getArchiveAnalysisSnapshot(runtimeInfo.room.id),
+    ]);
 
     return NextResponse.json({
       room: {
@@ -70,6 +89,7 @@ export async function GET(_request: Request, context: RouteContext) {
           debateSlot: member.debateSlot,
           canParticipate: member.canParticipate,
         })),
+        archiveAnalysis: serializeArchiveAnalysisSnapshot(archiveAnalysis),
       },
       providers: runtimeInfo.providers,
       features: {

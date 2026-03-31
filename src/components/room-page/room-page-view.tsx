@@ -13,6 +13,7 @@ import {
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
 import { type TranscriptionProviderName } from "@/features/transcription/core/providers";
 import { getArchiveMessageSide, isImportedArchiveRoom } from "@/lib/archive-room";
+import { parseFinalSummaryMessage } from "@/lib/final-summary";
 import { type RoomAnalysisProfilePreference } from "@/lib/room-analysis-profile";
 import { type RoomTranscriptionLanguagePreference } from "@/lib/room-transcription-language";
 import { type RoomVoiceSourcePreference } from "@/lib/room-voice-preferences";
@@ -43,6 +44,8 @@ import {
 
 type RoomPageViewProps = {
   activeStatusTooltip: ActiveStatusTooltipState;
+  archiveAnalysisPending: boolean;
+  archiveAnalysisSelectedProfile: RoomAnalysisProfilePreference;
   analysisProfilePending: boolean;
   analysisTogglePending: boolean;
   analysisViewState: AnalysisViewState;
@@ -70,26 +73,31 @@ type RoomPageViewProps = {
   micVolume: number;
   onChatInputChange: (value: string) => void;
   onChatInputKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onCloseClearArchiveAnalysisConfirm: () => void;
   onCloseEndRoomConfirm: () => void;
   onCloseMicSelector: () => void;
   onCloseMobileAnalysis: () => void;
   onCloseSwitchConfirm: () => void;
+  onConfirmClearArchiveAnalysis: () => void;
   onConfirmEndRoom: () => void;
   onConfirmSwitch: () => void;
   onConnectRoom: () => void;
   onCloseActiveStatusTooltip: () => void;
   onConnectionStatusClick: () => void;
   onLeaveVoiceCall: () => void;
+  onOpenClearArchiveAnalysisConfirm: () => void;
   onOpenEndRoomConfirm: () => void;
   onOpenMobileAnalysis: () => void;
   onSelectMic: (deviceId: string) => void;
   onSpeakerSwitchAction: () => void;
+  onStartArchiveAnalysis: () => void;
   onStartVoiceCall: () => void;
   onSubmitTextMessage: (event: FormEvent<HTMLFormElement>) => void;
   onToggleMicSelector: () => void;
   onTogglePublicRoom: () => void;
   onToggleRawMessage: (nextId: string | null) => void;
   onToggleRealtimeAnalysis: () => void;
+  onUpdateArchiveAnalysisProfile: (profile: RoomAnalysisProfilePreference) => void;
   onUpdateAnalysisProfile: (profile: RoomAnalysisProfilePreference) => void;
   onUpdateRoomTranscriptionLanguage: (language: RoomTranscriptionLanguagePreference) => void;
   onUpdateVoiceSource: (source: RoomVoiceSourcePreference) => void;
@@ -113,6 +121,7 @@ type RoomPageViewProps = {
   };
   selectedMicId: string;
   sendingText: boolean;
+  showClearArchiveAnalysisConfirm: boolean;
   showEndRoomConfirm: boolean;
   showMobileAnalysis: boolean;
   showSwitchConfirm: boolean;
@@ -134,6 +143,7 @@ type RoomPageViewProps = {
 
 type AnalysisMessageProps = {
   analysisViewState: AnalysisViewState;
+  isArchiveRoom: boolean;
   language: UiLanguage;
   message: ChatMessage;
   onToggleRawMessage: (nextId: string | null) => void;
@@ -143,6 +153,7 @@ type AnalysisMessageProps = {
 
 function AnalysisMessage({
   analysisViewState,
+  isArchiveRoom,
   language,
   message,
   onToggleRawMessage,
@@ -159,10 +170,14 @@ function AnalysisMessage({
     const isRaw = rawMessageId === message.id;
     const ownSourceLabel = analysisView ? analysisView.ownSourceLabel : "A";
     const otherSourceLabel = analysisView ? analysisView.otherSourceLabel : "B";
-    const otherRoundScore = getAnalysisRoundScore(data, otherSourceLabel);
-    const ownRoundScore = getAnalysisRoundScore(data, ownSourceLabel);
-    const otherCurrentRoundInsight = getAnalysisInsight(data, "currentRound", otherSourceLabel);
-    const ownCurrentRoundInsight = getAnalysisInsight(data, "currentRound", ownSourceLabel);
+    const leftSourceLabel = isArchiveRoom ? "A" : otherSourceLabel;
+    const rightSourceLabel = isArchiveRoom ? "B" : ownSourceLabel;
+    const leftRoundScore = getAnalysisRoundScore(data, leftSourceLabel);
+    const rightRoundScore = getAnalysisRoundScore(data, rightSourceLabel);
+    const leftCurrentRoundInsight = getAnalysisInsight(data, "currentRound", leftSourceLabel);
+    const rightCurrentRoundInsight = getAnalysisInsight(data, "currentRound", rightSourceLabel);
+    const leftTitle = isArchiveRoom ? t("A方", "Side A") : t("对方", "Other Side");
+    const rightTitle = isArchiveRoom ? t("B方", "Side B") : t("我方", "Our Side");
 
     return (
       <div className="bubble analysis">
@@ -185,37 +200,37 @@ function AnalysisMessage({
           <div className="analysis-grid">
             <div className="analysis-side-section">
               <div className="analysis-side-head">
-                <div className="analysis-side-h">{t("对方", "Other Side")}</div>
-                {otherRoundScore && (
+                <div className="analysis-side-h">{leftTitle}</div>
+                {leftRoundScore && (
                   <span className="analysis-delta-tag">
-                    {otherRoundScore.delta >= 0 ? "+" : ""}
-                    {otherRoundScore.delta}
+                    {leftRoundScore.delta >= 0 ? "+" : ""}
+                    {leftRoundScore.delta}
                   </span>
                 )}
               </div>
               <p className="analysis-insight">
-                {otherCurrentRoundInsight || t("本轮无发言", "No activity this round")}
+                {leftCurrentRoundInsight || t("本轮无发言", "No activity this round")}
               </p>
-              {otherRoundScore?.reason && (
-                <span className="analysis-score-reason">{otherRoundScore.reason}</span>
+              {leftRoundScore?.reason && (
+                <span className="analysis-score-reason">{leftRoundScore.reason}</span>
               )}
             </div>
 
             <div className="analysis-side-section">
               <div className="analysis-side-head">
-                <div className="analysis-side-h">{t("我方", "Our Side")}</div>
-                {ownRoundScore && (
+                <div className="analysis-side-h">{rightTitle}</div>
+                {rightRoundScore && (
                   <span className="analysis-delta-tag">
-                    {ownRoundScore.delta >= 0 ? "+" : ""}
-                    {ownRoundScore.delta}
+                    {rightRoundScore.delta >= 0 ? "+" : ""}
+                    {rightRoundScore.delta}
                   </span>
                 )}
               </div>
               <p className="analysis-insight">
-                {ownCurrentRoundInsight || t("本轮无发言", "No activity this round")}
+                {rightCurrentRoundInsight || t("本轮无发言", "No activity this round")}
               </p>
-              {ownRoundScore?.reason && (
-                <span className="analysis-score-reason">{ownRoundScore.reason}</span>
+              {rightRoundScore?.reason && (
+                <span className="analysis-score-reason">{rightRoundScore.reason}</span>
               )}
             </div>
           </div>
@@ -243,13 +258,115 @@ function AnalysisMessage({
   }
 }
 
+function SummaryMessage({
+  language,
+  message,
+  t,
+}: Pick<RoomPageViewProps, "language" | "t"> & { message: ChatMessage }) {
+  const summary = parseFinalSummaryMessage(message);
+  if (!summary) {
+    return (
+      <article className="bubble summary announcement">
+        <header className="bubble-meta">
+          <strong>{t("最终总结", "Final Summary")}</strong>
+          <span className="bubble-source">{t("总", "S")}</span>
+          <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
+        </header>
+        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</p>
+      </article>
+    );
+  }
+
+  return (
+    <article className="bubble summary announcement">
+      <header className="bubble-meta">
+        <strong>{t("最终总结", "Final Summary")}</strong>
+        <span className="bubble-source">{t("总", "S")}</span>
+        <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
+      </header>
+
+      {summary.focus ? (
+        <div style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "8px" }}>{summary.focus}</div>
+      ) : null}
+
+      {summary.overall ? (
+        <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{summary.overall}</p>
+      ) : null}
+
+      <div className="analysis-grid" style={{ marginTop: "12px" }}>
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">{t("A方要点", "Side A")}</div>
+          </div>
+          {summary.sideAPoints.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideAPoints.map((item, index) => (
+                <li key={`side-a-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">{t("暂无要点", "No points yet")}</p>
+          )}
+        </div>
+
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">{t("B方要点", "Side B")}</div>
+          </div>
+          {summary.sideBPoints.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideBPoints.map((item, index) => (
+                <li key={`side-b-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">{t("暂无要点", "No points yet")}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="analysis-grid" style={{ marginTop: "12px" }}>
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">{t("A方亮点", "Side A Highlights")}</div>
+          </div>
+          {summary.sideAHighlights.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideAHighlights.map((item, index) => (
+                <li key={`side-a-highlight-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">{t("暂无亮点", "No highlights yet")}</p>
+          )}
+        </div>
+
+        <div className="analysis-side-section">
+          <div className="analysis-side-head">
+            <div className="analysis-side-h">{t("B方亮点", "Side B Highlights")}</div>
+          </div>
+          {summary.sideBHighlights.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "18px", display: "grid", gap: "6px", color: "var(--muted)" }}>
+              {summary.sideBHighlights.map((item, index) => (
+                <li key={`side-b-highlight-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="analysis-insight">{t("暂无亮点", "No highlights yet")}</p>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function ArchiveOtherMessage({
   language,
   message,
   t,
 }: Pick<RoomPageViewProps, "language" | "t"> & { message: ChatMessage }) {
   return (
-    <article className="bubble analysis announcement">
+    <article className="bubble archive-other announcement">
       <header className="bubble-meta">
         <strong>{message.senderName || t("其它", "Other")}</strong>
         <span className="bubble-source">{message.type === "transcript" ? t("音", "V") : t("文", "T")}</span>
@@ -294,10 +411,101 @@ function getRoomMemberStatusLabel(
 function isSpecialArchiveRoomMeta(roomMeta: RoomMetaState) {
   return isImportedArchiveRoom({
     status: roomMeta.status,
-    isPublic: roomMeta.isPublic,
     analysisEnabled: roomMeta.analysisEnabled,
     hasArchiveMessages: roomMeta.isArchiveImport,
   });
+}
+
+function formatArchiveAnalysisStatusLabel(
+  status: RoomMetaState["archiveAnalysis"]["status"],
+  t: RoomPageTranslate,
+) {
+  switch (status) {
+    case "queued":
+      return t("已排队", "Queued");
+    case "running":
+      return t("生成中", "Running");
+    case "completed":
+      return t("已生成", "Completed");
+    case "failed":
+      return t("失败", "Failed");
+    default:
+      return t("未生成", "Not generated");
+  }
+}
+
+function formatArchiveAnalysisStageLabel(
+  stage: RoomMetaState["archiveAnalysis"]["stage"],
+  t: RoomPageTranslate,
+) {
+  switch (stage) {
+    case "planning":
+      return t("分析时机规划", "Checkpoint planning");
+    case "realtime":
+      return t("逐轮分析", "Round analysis");
+    case "final_summary":
+      return t("最终总结", "Final summary");
+    case "completed":
+      return t("已完成", "Completed");
+    case "failed":
+      return t("失败", "Failed");
+    default:
+      return t("等待中", "Idle");
+  }
+}
+
+function formatArchiveAnalysisDateTime(value: string | null, language: UiLanguage) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-GB", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function getArchiveAnalysisStatusChipLabel(
+  archiveAnalysis: RoomMetaState["archiveAnalysis"],
+  t: RoomPageTranslate,
+) {
+  switch (archiveAnalysis.status) {
+    case "queued":
+      return t("已排队", "Queued");
+    case "running":
+      return t("生成中", "Running");
+    case "completed":
+      return t("已生成", "Done");
+    case "failed":
+      return t("失败", "Failed");
+    default:
+      return t("未生成", "Not generated");
+  }
+}
+
+function getArchiveAnalysisGenerateActionLabel(
+  archiveAnalysis: RoomMetaState["archiveAnalysis"],
+  pending: boolean,
+  t: RoomPageTranslate,
+) {
+  if (pending || archiveAnalysis.status === "queued" || archiveAnalysis.status === "running") {
+    return t("生成中", "Running");
+  }
+  if (archiveAnalysis.status === "completed") {
+    return t("已生成", "Done");
+  }
+  if (archiveAnalysis.status === "failed") {
+    return t("重试", "Retry");
+  }
+  return t("生成", "Generate");
 }
 
 function RoomMembersSummary({
@@ -649,7 +857,8 @@ function RoomTranscriptionLanguageControl({
   const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
   const isOwner = roomMeta.isCreator;
   const selectedLanguage = roomMeta.providers.voice.selection.selectedTranscriptionLanguage;
-  const controlsDisabled = voiceSettingsPending || roomMeta.status === "ENDED";
+  const allowArchiveLanguageUpdate = roomMeta.isArchiveImport && roomMeta.status === "ENDED";
+  const controlsDisabled = voiceSettingsPending || (roomMeta.status === "ENDED" && !allowArchiveLanguageUpdate);
   const options = ([
     "zh",
     "en",
@@ -976,21 +1185,31 @@ function VoiceProviderPopover({
 }
 
 function AnalysisProviderPopover({
+  archiveAnalysisPending,
+  archiveAnalysisSelectedProfile,
   analysisProfilePending,
   analysisTogglePending,
   language,
   onOwnerOnlySettingAttempt,
+  onOpenClearArchiveAnalysisConfirm,
+  onStartArchiveAnalysis,
   onToggleRealtimeAnalysis,
+  onUpdateArchiveAnalysisProfile,
   onUpdateAnalysisProfile,
   roomMeta,
   showOwnerOnlyHint,
   t,
 }: Pick<
   RoomPageViewProps,
+  | "archiveAnalysisPending"
+  | "archiveAnalysisSelectedProfile"
   | "analysisProfilePending"
   | "analysisTogglePending"
   | "language"
+  | "onOpenClearArchiveAnalysisConfirm"
+  | "onStartArchiveAnalysis"
   | "onToggleRealtimeAnalysis"
+  | "onUpdateArchiveAnalysisProfile"
   | "onUpdateAnalysisProfile"
   | "roomMeta"
   | "t"
@@ -1000,20 +1219,30 @@ function AnalysisProviderPopover({
 }) {
   const [openMenu, setOpenMenu] = useState<"profile" | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const isSpecialArchiveRoom = isSpecialArchiveRoomMeta(roomMeta);
+  const archiveAnalysis = roomMeta.archiveAnalysis;
   const analysis = roomMeta.providers.analysis;
   const isOwner = roomMeta.isCreator;
   const ownerOnlyMessage = t("仅房主才能设置这些选项。", "Only the room owner can change these settings.");
   const controlsDisabled = analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED";
-  const selectedProfile = analysis.selection.selectedProfile;
+  const archiveControlsDisabled =
+    analysisProfilePending ||
+    archiveAnalysisPending ||
+    archiveAnalysis.status === "queued" ||
+    archiveAnalysis.status === "running" ||
+    archiveAnalysis.status === "completed";
+  const selectedProfile = isSpecialArchiveRoom
+    ? archiveAnalysisSelectedProfile
+    : analysis.selection.selectedProfile;
   const displayValue = formatAnalysisProfileValue(selectedProfile, language);
   const availableProfileCount = analysis.selection.profileOptions.filter((option) => option.available).length;
   const canSelectProfile =
     isOwner &&
     (availableProfileCount > 1 ||
       Boolean(
-        analysis.selection.selectedProfile &&
+        selectedProfile &&
           analysis.selection.profileOptions.some(
-            (option) => option.value === analysis.selection.selectedProfile && !option.available,
+            (option) => option.value === selectedProfile && !option.available,
           ),
       ));
   const showLockedProfileControl = !isOwner;
@@ -1055,6 +1284,32 @@ function AnalysisProviderPopover({
     };
   }, [openMenu]);
 
+  const archiveStatusChipLabel = getArchiveAnalysisStatusChipLabel(
+    archiveAnalysis,
+    t,
+  );
+  const archiveGenerateActionLabel = getArchiveAnalysisGenerateActionLabel(
+    archiveAnalysis,
+    archiveAnalysisPending,
+    t,
+  );
+  const archiveActionTone =
+    archiveAnalysisPending || archiveAnalysis.status === "queued" || archiveAnalysis.status === "running"
+      ? "running"
+      : archiveAnalysis.status === "completed"
+        ? "completed"
+        : archiveAnalysis.status === "failed"
+          ? "failed"
+          : "idle";
+  const archiveGenerateDisabled =
+    !isOwner ||
+    archiveControlsDisabled ||
+    !analysis.ready;
+  const archiveProgressValue =
+    archiveAnalysis.plannedCount > 0
+      ? `${archiveAnalysis.completedCount}/${archiveAnalysis.plannedCount}`
+      : `${archiveAnalysis.completedCount}`;
+
   return (
     <div className="provider-tooltip">
       {showOwnerOnlyHint ? <div className="owner-only-tip">{ownerOnlyMessage}</div> : null}
@@ -1063,34 +1318,55 @@ function AnalysisProviderPopover({
           <span className="provider-chip-label">{t("大模型分析", "LLM Analysis")}</span>
           <strong className="provider-chip-value">{getAnalysisProviderLabel(analysis, language)}</strong>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={roomMeta.analysisEnabled}
-          aria-disabled={!isOwner || analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED"}
-          aria-label={t("切换实时大模型分析", "Toggle realtime LLM analysis")}
-          className={`provider-chip-switch ${roomMeta.analysisEnabled ? "active" : ""}`}
-          title={!isOwner ? ownerOnlyMessage : undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!isOwner) {
-              onOwnerOnlySettingAttempt();
-              return;
-            }
-            onToggleRealtimeAnalysis();
-          }}
-          disabled={analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED"}
-        >
-          <span className="provider-chip-switch-track">
-            <span className="provider-chip-switch-thumb" />
-          </span>
-          <span className="provider-chip-switch-text">
-            {analysisTogglePending ? "..." : roomMeta.analysisEnabled ? t("开", "On") : t("关", "Off")}
-          </span>
-        </button>
+        {isSpecialArchiveRoom ? (
+          <button
+            type="button"
+            aria-label={t("打开归档分析设置", "Open archive analysis settings")}
+            className={`provider-chip-action state-${archiveActionTone}`}
+            title={!isOwner && archiveAnalysis.status !== "completed" ? ownerOnlyMessage : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!isOwner && archiveAnalysis.status !== "completed") {
+                onOwnerOnlySettingAttempt();
+              }
+            }}
+          >
+            {archiveStatusChipLabel}
+          </button>
+        ) : (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={roomMeta.analysisEnabled}
+            aria-disabled={!isOwner || analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED"}
+            aria-label={t("切换实时大模型分析", "Toggle realtime LLM analysis")}
+            className={`provider-chip-switch ${roomMeta.analysisEnabled ? "active" : ""}`}
+            title={!isOwner ? ownerOnlyMessage : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!isOwner) {
+                onOwnerOnlySettingAttempt();
+                return;
+              }
+              onToggleRealtimeAnalysis();
+            }}
+            disabled={analysisTogglePending || analysisProfilePending || roomMeta.status === "ENDED"}
+          >
+            <span className="provider-chip-switch-track">
+              <span className="provider-chip-switch-thumb" />
+            </span>
+            <span className="provider-chip-switch-text">
+              {analysisTogglePending ? "..." : roomMeta.analysisEnabled ? t("开", "On") : t("关", "Off")}
+            </span>
+          </button>
+        )}
       </div>
       <div ref={popoverRef} className="provider-popover provider-popover-form" role="tooltip">
-        <div className="provider-popover-title">{t("大模型分析", "LLM Analysis")}</div>
+        <div className="provider-popover-title">
+          {isSpecialArchiveRoom
+            ? t("归档大模型分析", "Archive LLM Analysis")
+            : t("大模型分析", "LLM Analysis")}
+        </div>
 
         <div className="provider-popover-row provider-popover-row-control">
           <span className="provider-popover-label">{t("分析方案", "Analysis profile")}</span>
@@ -1098,7 +1374,7 @@ function AnalysisProviderPopover({
             <PopoverInlineMenu
               ariaLabel={t("选择大模型分析方案", "Select analysis profile")}
               displayValue={displayValue}
-              disabled={controlsDisabled}
+              disabled={isSpecialArchiveRoom ? archiveControlsDisabled : controlsDisabled}
               isOpen={openMenu === "profile"}
               onOwnerOnlySettingAttempt={onOwnerOnlySettingAttempt}
               ownerOnlyMessage={ownerOnlyMessage}
@@ -1108,7 +1384,11 @@ function AnalysisProviderPopover({
               value={selectedProfile}
               onChange={(nextValue) => {
                 const typedValue = nextValue as RoomAnalysisProfilePreference;
-                if (!typedValue || typedValue === analysis.selection.selectedProfile) {
+                if (!typedValue || typedValue === selectedProfile) {
+                  return;
+                }
+                if (isSpecialArchiveRoom) {
+                  onUpdateArchiveAnalysisProfile(typedValue);
                   return;
                 }
                 onUpdateAnalysisProfile(typedValue);
@@ -1120,6 +1400,59 @@ function AnalysisProviderPopover({
           )}
         </div>
 
+        {isSpecialArchiveRoom ? (
+          <>
+            <div className="provider-popover-row">
+              <span className="provider-popover-label">{t("生成状态", "Generation status")}</span>
+              <strong className="provider-popover-value">
+                {formatArchiveAnalysisStatusLabel(archiveAnalysis.status, t)}
+              </strong>
+            </div>
+
+            <div className="provider-popover-row">
+              <span className="provider-popover-label">{t("当前阶段", "Current stage")}</span>
+              <strong className="provider-popover-value">
+                {formatArchiveAnalysisStageLabel(archiveAnalysis.stage, t)}
+              </strong>
+            </div>
+
+            <div className="provider-popover-row">
+              <span className="provider-popover-label">{t("进度", "Progress")}</span>
+              <strong
+                className="provider-popover-value"
+                style={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {archiveProgressValue}
+              </strong>
+            </div>
+
+            {archiveAnalysis.requestedAt ? (
+              <div className="provider-popover-row">
+                <span className="provider-popover-label">{t("请求时间", "Requested")}</span>
+                <strong className="provider-popover-value">
+                  {formatArchiveAnalysisDateTime(archiveAnalysis.requestedAt, language)}
+                </strong>
+              </div>
+            ) : null}
+
+            {archiveAnalysis.completedAt ? (
+              <div className="provider-popover-row">
+                <span className="provider-popover-label">{t("完成时间", "Completed")}</span>
+                <strong className="provider-popover-value">
+                  {formatArchiveAnalysisDateTime(archiveAnalysis.completedAt, language)}
+                </strong>
+              </div>
+            ) : null}
+
+            {archiveAnalysis.error ? (
+              <div className="provider-popover-row">
+                <span className="provider-popover-label">{t("错误", "Error")}</span>
+                <strong className="provider-popover-value">{archiveAnalysis.error}</strong>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
         {getAnalysisProviderDetails(analysis, language).map((item) => (
           <div key={`analysis-${item.label}`} className="provider-popover-row">
             <span className="provider-popover-label">{item.label}</span>
@@ -1127,7 +1460,50 @@ function AnalysisProviderPopover({
           </div>
         ))}
 
-        {isOwner ? (
+        {isSpecialArchiveRoom ? (
+          <>
+            <p className="provider-popover-hint">
+              {!isOwner
+                ? ownerOnlyMessage
+                : archiveAnalysis.status === "completed"
+                  ? t(
+                      "这份归档房分析已经生成完成，聊天记录中会显示逐轮分析和最终总结。",
+                      "This archive analysis has already completed. The chat history now includes round analyses and a final summary.",
+                    )
+                  : archiveAnalysis.status === "queued" || archiveAnalysis.status === "running"
+                    ? t(
+                        "生成在后台异步执行，页面刷新或关闭不会中断；进度会通过元数据轮询继续更新。",
+                        "Generation runs asynchronously in the background. Refreshing or closing the page will not interrupt it, and progress will keep updating through metadata polling.",
+                      )
+                    : t(
+                        "生成会先根据完整对话规划分析时机，再逐轮生成实时分析，最后补充最终总结。",
+                        "Generation first plans analysis checkpoints from the full conversation, then creates round-by-round analyses, and finally adds the final summary.",
+                      )}
+            </p>
+
+            {isOwner && archiveAnalysis.status !== "completed" ? (
+              <button
+                type="button"
+                className="primary-btn"
+                style={{ width: "100%", height: "36px", marginTop: "22px", padding: "0 16px", fontSize: "0.88rem" }}
+                onClick={onStartArchiveAnalysis}
+                disabled={archiveGenerateDisabled}
+              >
+                {archiveGenerateActionLabel}
+              </button>
+            ) : archiveAnalysis.status === "completed" ? (
+              <button
+                type="button"
+                className="destructive-btn"
+                style={{ width: "100%", height: "36px", marginTop: "22px", padding: "0 16px", fontSize: "0.88rem" }}
+                onClick={onOpenClearArchiveAnalysisConfirm}
+                disabled={archiveAnalysisPending}
+              >
+                {t("清除分析", "Clear Analysis")}
+              </button>
+            ) : null}
+          </>
+        ) : isOwner ? (
           <p className="provider-popover-hint">
             {analysisProfilePending
               ? t("正在应用新方案...", "Applying new analysis profile...")
@@ -1145,6 +1521,8 @@ function AnalysisProviderPopover({
 }
 
 function RoomSidebarPanel({
+  archiveAnalysisPending,
+  archiveAnalysisSelectedProfile,
   analysisProfilePending,
   analysisTogglePending,
   isZh,
@@ -1153,10 +1531,13 @@ function RoomSidebarPanel({
   micSelectorOpen,
   micVolume,
   onCloseMicSelector,
+  onOpenClearArchiveAnalysisConfirm,
   onSelectMic,
   onToggleMicSelector,
   onTogglePublicRoom,
+  onStartArchiveAnalysis,
   onToggleRealtimeAnalysis,
+  onUpdateArchiveAnalysisProfile,
   onUpdateAnalysisProfile,
   onUpdateRoomTranscriptionLanguage,
   onUpdateVoiceSource,
@@ -1171,6 +1552,8 @@ function RoomSidebarPanel({
   voiceSettingsPending,
 }: Pick<
   RoomPageViewProps,
+  | "archiveAnalysisPending"
+  | "archiveAnalysisSelectedProfile"
   | "analysisProfilePending"
   | "analysisTogglePending"
   | "isZh"
@@ -1179,10 +1562,13 @@ function RoomSidebarPanel({
   | "micSelectorOpen"
   | "micVolume"
   | "onCloseMicSelector"
+  | "onOpenClearArchiveAnalysisConfirm"
   | "onSelectMic"
   | "onToggleMicSelector"
   | "onTogglePublicRoom"
+  | "onStartArchiveAnalysis"
   | "onToggleRealtimeAnalysis"
+  | "onUpdateArchiveAnalysisProfile"
   | "onUpdateAnalysisProfile"
   | "onUpdateRoomTranscriptionLanguage"
   | "onUpdateVoiceSource"
@@ -1202,6 +1588,9 @@ function RoomSidebarPanel({
   const [ownerOnlyHintTarget, setOwnerOnlyHintTarget] = useState<
     "public" | "transcriptionLanguage" | "voice" | "analysis" | null
   >(null);
+  const isSpecialArchiveRoom = isSpecialArchiveRoomMeta(roomMeta);
+  const primarySideLabel = isSpecialArchiveRoom ? t("A方", "Side A") : t("我方", "Our Side");
+  const secondarySideLabel = isSpecialArchiveRoom ? t("B方", "Side B") : t("对方", "Other Side");
   const publicRoomOwnerLocked = !roomMeta.isCreator;
   const selectedLabel = selectedDevice
     ? selectedDevice.label ||
@@ -1239,7 +1628,7 @@ function RoomSidebarPanel({
         <h4>{t("实时比分", "Real-time Score")}</h4>
         <div className="score-card">
           <div className="score-box">
-            <span className="label">{t("我方", "Our Side")}</span>
+            <span className="label">{primarySideLabel}</span>
             <span
               className="value"
               style={{ color: scores.own >= scores.other ? "var(--primary)" : "inherit" }}
@@ -1248,7 +1637,7 @@ function RoomSidebarPanel({
             </span>
           </div>
           <div className="score-box">
-            <span className="label">{t("对方", "Other Side")}</span>
+            <span className="label">{secondarySideLabel}</span>
             <span
               className="value"
               style={{ color: scores.other >= scores.own ? "var(--primary)" : "inherit" }}
@@ -1263,14 +1652,14 @@ function RoomSidebarPanel({
         <h4>{t("双方观点", "Perspectives")}</h4>
         <div className="overall-insight-box">
           <div className="overall-insight-item">
-            <strong>{t("我方", "Our Side")}</strong>
+            <strong>{primarySideLabel}</strong>
             <p className="analysis-insight" style={{ fontSize: "0.85rem" }}>
               {overallInsights.own || t("暂无洞察", "No insights yet")}
             </p>
           </div>
           <div style={{ height: "1px", background: "var(--line)" }} />
           <div className="overall-insight-item">
-            <strong>{t("对方", "Other Side")}</strong>
+            <strong>{secondarySideLabel}</strong>
             <p className="analysis-insight" style={{ fontSize: "0.85rem" }}>
               {overallInsights.other || t("暂无洞察", "No insights yet")}
             </p>
@@ -1282,7 +1671,7 @@ function RoomSidebarPanel({
         <h4>{t("建议", "Suggestions")}</h4>
         <div className="overall-insight-box">
           <div className="overall-insight-item">
-            <strong>{t("我方", "Our Side")}</strong>
+            <strong>{primarySideLabel}</strong>
             {suggestions.own.length > 0 ? (
               <div style={{ marginTop: "4px", fontSize: "0.85rem", color: "var(--muted)" }}>
                 {suggestions.own.map((suggestion, index) => (
@@ -1303,7 +1692,7 @@ function RoomSidebarPanel({
           </div>
           <div style={{ height: "1px", background: "var(--line)" }} />
           <div className="overall-insight-item">
-            <strong>{t("对方", "Other Side")}</strong>
+            <strong>{secondarySideLabel}</strong>
             {suggestions.other.length > 0 ? (
               <div style={{ marginTop: "4px", fontSize: "0.85rem", color: "var(--muted)" }}>
                 {suggestions.other.map((suggestion, index) => (
@@ -1377,125 +1766,135 @@ function RoomSidebarPanel({
             voiceSettingsPending={voiceSettingsPending}
           />
 
-          <VoiceProviderPopover
-            language={language}
-            onUpdateVoiceSource={onUpdateVoiceSource}
-            onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
-            onOwnerOnlySettingAttempt={() => notifyOwnerOnlySettingFor("voice")}
-            roomMeta={roomMeta}
-            showOwnerOnlyHint={ownerOnlyHintTarget === "voice"}
-            t={t}
-            voiceSettingsPending={voiceSettingsPending}
-          />
+          {!isSpecialArchiveRoom ? (
+            <>
+              <VoiceProviderPopover
+                language={language}
+                onUpdateVoiceSource={onUpdateVoiceSource}
+                onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
+                onOwnerOnlySettingAttempt={() => notifyOwnerOnlySettingFor("voice")}
+                roomMeta={roomMeta}
+                showOwnerOnlyHint={ownerOnlyHintTarget === "voice"}
+                t={t}
+                voiceSettingsPending={voiceSettingsPending}
+              />
 
-          <div className="mic-selector-wrap" style={{ position: "relative" }}>
-            <button
-              type="button"
-              className="room-status provider-chip provider-chip-panel mic-selector-trigger"
-              onClick={onToggleMicSelector}
-              aria-expanded={micSelectorOpen}
-              aria-label={isZh ? "选择麦克风" : "Select microphone"}
-            >
-              <span className="provider-chip-label mic-selector-label">{t("麦克风", "Microphone")}</span>
-              <div className="provider-chip-main mic-selector-content">
-                <strong className="provider-chip-value mic-selector-value" title={selectedLabel}>
-                  {selectedLabel}
-                </strong>
-              </div>
-              <span
-                className="mic-vol-icon"
-                style={{ "--mic-vol": micVolume } as CSSProperties}
-                aria-hidden="true"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+              <div className="mic-selector-wrap" style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="room-status provider-chip provider-chip-panel mic-selector-trigger"
+                  onClick={onToggleMicSelector}
+                  aria-expanded={micSelectorOpen}
+                  aria-label={isZh ? "选择麦克风" : "Select microphone"}
                 >
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
-                </svg>
-              </span>
-            </button>
-
-            {micSelectorOpen && (
-              <>
-                <div
-                  style={{ position: "fixed", inset: 0, zIndex: 98 }}
-                  onClick={onCloseMicSelector}
-                  aria-hidden="true"
-                />
-                <div className="mic-dropdown" role="listbox" aria-label={isZh ? "麦克风设备" : "Microphone devices"}>
-                  <div className="mic-vol-bar-wrap">
-                    <div className="mic-vol-bar-fill" style={{ width: `${Math.round(micVolume * 100)}%` }} />
-                    <span className="mic-vol-label">
-                      {isZh ? "实时音量" : "Level"}
-                      <strong style={{ marginLeft: 6, fontVariantNumeric: "tabular-nums" }}>
-                        {Math.round(micVolume * 100)}%
-                      </strong>
-                    </span>
+                  <span className="provider-chip-label mic-selector-label">{t("麦克风", "Microphone")}</span>
+                  <div className="provider-chip-main mic-selector-content">
+                    <strong className="provider-chip-value mic-selector-value" title={selectedLabel}>
+                      {selectedLabel}
+                    </strong>
                   </div>
+                  <span
+                    className="mic-vol-icon"
+                    style={{ "--mic-vol": micVolume } as CSSProperties}
+                    aria-hidden="true"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <line x1="12" y1="19" x2="12" y2="23" />
+                      <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                  </span>
+                </button>
 
-                  <ul className="mic-device-list" role="group">
-                    {micDevices.length === 0 ? (
-                      <li className="mic-device-item mic-device-empty">
-                        {isZh ? "未找到麦克风设备" : "No microphone found"}
-                      </li>
-                    ) : (
-                      micDevices.map((device, index) => {
-                        const label = device.label || (isZh ? `麦克风 ${index + 1}` : `Microphone ${index + 1}`);
-                        const isActive = device.deviceId === selectedMicId;
-                        return (
-                          <li key={device.deviceId} role="option" aria-selected={isActive}>
-                            <button
-                              type="button"
-                              className={`mic-device-item ${isActive ? "mic-device-active" : ""}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onSelectMic(device.deviceId);
-                              }}
-                            >
-                              <span className="mic-device-check" aria-hidden="true">
-                                {isActive ? (
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="3"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                ) : null}
-                              </span>
-                              <span className="mic-device-label">{label}</span>
-                            </button>
+                {micSelectorOpen && (
+                  <>
+                    <div
+                      style={{ position: "fixed", inset: 0, zIndex: 98 }}
+                      onClick={onCloseMicSelector}
+                      aria-hidden="true"
+                    />
+                    <div className="mic-dropdown" role="listbox" aria-label={isZh ? "麦克风设备" : "Microphone devices"}>
+                      <div className="mic-vol-bar-wrap">
+                        <div className="mic-vol-bar-fill" style={{ width: `${Math.round(micVolume * 100)}%` }} />
+                        <span className="mic-vol-label">
+                          {isZh ? "实时音量" : "Level"}
+                          <strong style={{ marginLeft: 6, fontVariantNumeric: "tabular-nums" }}>
+                            {Math.round(micVolume * 100)}%
+                          </strong>
+                        </span>
+                      </div>
+
+                      <ul className="mic-device-list" role="group">
+                        {micDevices.length === 0 ? (
+                          <li className="mic-device-item mic-device-empty">
+                            {isZh ? "未找到麦克风设备" : "No microphone found"}
                           </li>
-                        );
-                      })
-                    )}
-                  </ul>
-                </div>
-              </>
-            )}
-          </div>
+                        ) : (
+                          micDevices.map((device, index) => {
+                            const label =
+                              device.label || (isZh ? `麦克风 ${index + 1}` : `Microphone ${index + 1}`);
+                            const isActive = device.deviceId === selectedMicId;
+                            return (
+                              <li key={device.deviceId} role="option" aria-selected={isActive}>
+                                <button
+                                  type="button"
+                                  className={`mic-device-item ${isActive ? "mic-device-active" : ""}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onSelectMic(device.deviceId);
+                                  }}
+                                >
+                                  <span className="mic-device-check" aria-hidden="true">
+                                    {isActive ? (
+                                      <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="3"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <polyline points="20 6 9 17 4 12" />
+                                      </svg>
+                                    ) : null}
+                                  </span>
+                                  <span className="mic-device-label">{label}</span>
+                                </button>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          ) : null}
 
           <AnalysisProviderPopover
+            archiveAnalysisPending={archiveAnalysisPending}
+            archiveAnalysisSelectedProfile={archiveAnalysisSelectedProfile}
             analysisProfilePending={analysisProfilePending}
             analysisTogglePending={analysisTogglePending}
             language={language}
             onOwnerOnlySettingAttempt={() => notifyOwnerOnlySettingFor("analysis")}
+            onOpenClearArchiveAnalysisConfirm={onOpenClearArchiveAnalysisConfirm}
+            onStartArchiveAnalysis={onStartArchiveAnalysis}
             onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
+            onUpdateArchiveAnalysisProfile={onUpdateArchiveAnalysisProfile}
             onUpdateAnalysisProfile={onUpdateAnalysisProfile}
             roomMeta={roomMeta}
             showOwnerOnlyHint={ownerOnlyHintTarget === "analysis"}
@@ -1509,6 +1908,8 @@ function RoomSidebarPanel({
 
 export function RoomPageView({
   activeStatusTooltip,
+  archiveAnalysisPending,
+  archiveAnalysisSelectedProfile,
   analysisProfilePending,
   analysisTogglePending,
   analysisViewState,
@@ -1536,26 +1937,31 @@ export function RoomPageView({
   micVolume,
   onChatInputChange,
   onChatInputKeyDown,
+  onCloseClearArchiveAnalysisConfirm,
   onCloseEndRoomConfirm,
   onCloseMicSelector,
   onCloseMobileAnalysis,
   onCloseSwitchConfirm,
+  onConfirmClearArchiveAnalysis,
   onConfirmEndRoom,
   onConfirmSwitch,
   onConnectRoom,
   onCloseActiveStatusTooltip,
   onConnectionStatusClick,
   onLeaveVoiceCall,
+  onOpenClearArchiveAnalysisConfirm,
   onOpenEndRoomConfirm,
   onOpenMobileAnalysis,
   onSelectMic,
   onSpeakerSwitchAction,
+  onStartArchiveAnalysis,
   onStartVoiceCall,
   onSubmitTextMessage,
   onToggleMicSelector,
   onTogglePublicRoom,
   onToggleRawMessage,
   onToggleRealtimeAnalysis,
+  onUpdateArchiveAnalysisProfile,
   onUpdateAnalysisProfile,
   onUpdateRoomTranscriptionLanguage,
   onUpdateVoiceSource,
@@ -1573,6 +1979,7 @@ export function RoomPageView({
   scores,
   selectedMicId,
   sendingText,
+  showClearArchiveAnalysisConfirm,
   showEndRoomConfirm,
   showMobileAnalysis,
   showSwitchConfirm,
@@ -1590,6 +1997,7 @@ export function RoomPageView({
 }: RoomPageViewProps) {
   const statusTooltipRef = useRef<HTMLDivElement | null>(null);
   const [isMobileHeaderCollapsed, setIsMobileHeaderCollapsed] = useState(false);
+  const isSpecialArchiveRoom = isSpecialArchiveRoomMeta(roomMeta);
   const showSpeakerSwitchButton = speakerSwitchEnabled && canParticipate;
   const speakerSwitchButtonLabel = speakerSwitchPending
     ? "..."
@@ -1660,21 +2068,26 @@ export function RoomPageView({
   }, [activeStatusTooltip, isMobileHeaderCollapsed, onCloseActiveStatusTooltip]);
 
   const sidebarContent = (
-        <RoomSidebarPanel
-          analysisProfilePending={analysisProfilePending}
-          analysisTogglePending={analysisTogglePending}
-          isZh={isZh}
-          language={language}
+    <RoomSidebarPanel
+      archiveAnalysisPending={archiveAnalysisPending}
+      archiveAnalysisSelectedProfile={archiveAnalysisSelectedProfile}
+      analysisProfilePending={analysisProfilePending}
+      analysisTogglePending={analysisTogglePending}
+      isZh={isZh}
+      language={language}
       micDevices={micDevices}
       micSelectorOpen={micSelectorOpen}
       micVolume={micVolume}
       onCloseMicSelector={onCloseMicSelector}
+      onOpenClearArchiveAnalysisConfirm={onOpenClearArchiveAnalysisConfirm}
       onSelectMic={onSelectMic}
-          onToggleMicSelector={onToggleMicSelector}
-          onTogglePublicRoom={onTogglePublicRoom}
-          onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
-          onUpdateAnalysisProfile={onUpdateAnalysisProfile}
-          onUpdateRoomTranscriptionLanguage={onUpdateRoomTranscriptionLanguage}
+      onToggleMicSelector={onToggleMicSelector}
+      onTogglePublicRoom={onTogglePublicRoom}
+      onStartArchiveAnalysis={onStartArchiveAnalysis}
+      onToggleRealtimeAnalysis={onToggleRealtimeAnalysis}
+      onUpdateArchiveAnalysisProfile={onUpdateArchiveAnalysisProfile}
+      onUpdateAnalysisProfile={onUpdateAnalysisProfile}
+      onUpdateRoomTranscriptionLanguage={onUpdateRoomTranscriptionLanguage}
       onUpdateVoiceSource={onUpdateVoiceSource}
       onUpdateVoiceTranscriptionProvider={onUpdateVoiceTranscriptionProvider}
       overallInsights={overallInsights}
@@ -1892,6 +2305,7 @@ export function RoomPageView({
                     <div key={message.id} className="message-row announcement">
                       <AnalysisMessage
                         analysisViewState={analysisViewState}
+                        isArchiveRoom={isSpecialArchiveRoom}
                         language={language}
                         message={message}
                         onToggleRawMessage={onToggleRawMessage}
@@ -1902,18 +2316,24 @@ export function RoomPageView({
                   );
                 }
 
+                if (message.type === "summary") {
+                  return (
+                    <div key={message.id} className="message-row announcement">
+                      <SummaryMessage language={language} message={message} t={t} />
+                    </div>
+                  );
+                }
+
                 const archiveSide = getArchiveMessageSide(message.participantId);
                 const archiveOtherMessage = archiveSide === "other";
-                const announcement = message.type === "summary" || archiveOtherMessage;
+                const announcement = archiveOtherMessage;
                 const ownMessage = announcement ? false : isOwnMessage(message, userId, username);
                 const alignSelf = archiveSide === "B" ? true : archiveSide === "A" ? false : ownMessage;
                 const rowClass = announcement ? "announcement" : alignSelf ? "self" : "other";
                 const messageTitle =
-                  message.type === "summary"
-                    ? t("最终总结", "Final Summary")
-                    : archiveSide === null && ownMessage
-                      ? t("我", "Me")
-                      : message.senderName;
+                  archiveSide === null && ownMessage
+                    ? t("我", "Me")
+                    : message.senderName;
 
                 return (
                   <div key={message.id} className={`message-row ${rowClass}`}>
@@ -2003,6 +2423,40 @@ export function RoomPageView({
         </h2>
         {sidebarContent}
       </div>
+
+      {showClearArchiveAnalysisConfirm && (
+        <div className="auth-modal-overlay">
+          <div className="auth-modal">
+            <header className="auth-modal-header">
+              <h2>{t("确认清除分析", "Confirm Clear Analysis")}</h2>
+            </header>
+            <div style={{ marginBottom: "24px", lineHeight: "1.6", color: "var(--muted)" }}>
+              {t(
+                "清除后会移除当前归档房间里的逐轮分析和最终总结；原始对话会保留，之后仍可重新生成。是否继续？",
+                "This will remove the generated round analyses and final summary from this archive room. The original conversation stays intact, and you can generate them again later. Continue?",
+              )}
+            </div>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                className="ghost-btn"
+                style={{ flex: 1 }}
+                onClick={onCloseClearArchiveAnalysisConfirm}
+                type="button"
+              >
+                {t("取消", "Cancel")}
+              </button>
+              <button
+                className="destructive-btn"
+                style={{ flex: 1 }}
+                onClick={onConfirmClearArchiveAnalysis}
+                type="button"
+              >
+                {t("清除", "Clear")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEndRoomConfirm && (
         <div className="auth-modal-overlay">

@@ -15,6 +15,7 @@ import {
   getAnalysisSchemaFixHint,
   isAnalysisSchemaMissingError,
 } from "@/features/analysis/service/analysis-errors";
+import { executeArchiveAnalysisGenerationForRoomRef } from "@/features/analysis/service/archive-analysis-service";
 import {
   executeFinalSummaryForRoomRef,
   executeRealtimeAnalysisForRoomRef,
@@ -153,6 +154,39 @@ async function handleFinalSummaryEvent(event: PendingAnalysisEvent) {
   }
 }
 
+async function handleArchiveGenerationEvent(event: PendingAnalysisEvent) {
+  try {
+    const result = await executeArchiveAnalysisGenerationForRoomRef(event.roomRefId);
+    await markAnalysisEventProcessed(event.id);
+
+    if (result.executed) {
+      logInfo("Archive analysis generation executed", {
+        roomRefId: event.roomRefId,
+        messageId: result.messageId,
+      });
+    } else {
+      logInfo("Archive analysis generation skipped", {
+        roomRefId: event.roomRefId,
+        reason: result.reason,
+      });
+    }
+  } catch (error) {
+    try {
+      await markAnalysisEventProcessed(event.id);
+    } catch (markProcessedError) {
+      logError("Failed to mark archive analysis event as processed", markProcessedError, {
+        roomRefId: event.roomRefId,
+        eventId: event.id,
+      });
+    }
+
+    logError("Archive analysis generation failed", error, {
+      roomRefId: event.roomRefId,
+      eventId: event.id,
+    });
+  }
+}
+
 async function pollOnce() {
   if (isPolling || isShuttingDown) {
     return;
@@ -174,6 +208,7 @@ async function pollOnce() {
 
     const realtimeEventIds: string[] = [];
     const finalSummaryEvents: PendingAnalysisEvent[] = [];
+    const archiveGenerationEvents: PendingAnalysisEvent[] = [];
 
     for (const event of events) {
       if (event.eventType === AnalysisEventType.REALTIME_TRIGGER) {
@@ -184,6 +219,11 @@ async function pollOnce() {
 
       if (event.eventType === AnalysisEventType.FINAL_SUMMARY_TRIGGER) {
         finalSummaryEvents.push(event);
+        continue;
+      }
+
+      if (event.eventType === AnalysisEventType.ARCHIVE_GENERATION_TRIGGER) {
+        archiveGenerationEvents.push(event);
       }
     }
 
@@ -191,6 +231,7 @@ async function pollOnce() {
       eventCount: events.length,
       realtimeEvents: realtimeEventIds.length,
       finalSummaryEvents: finalSummaryEvents.length,
+      archiveGenerationEvents: archiveGenerationEvents.length,
       roomCount: new Set(events.map((event) => event.roomRefId)).size,
     });
 
@@ -198,6 +239,10 @@ async function pollOnce() {
 
     for (const finalSummaryEvent of finalSummaryEvents) {
       await handleFinalSummaryEvent(finalSummaryEvent);
+    }
+
+    for (const archiveGenerationEvent of archiveGenerationEvents) {
+      await handleArchiveGenerationEvent(archiveGenerationEvent);
     }
   } catch (error) {
     if (isAnalysisSchemaMissingError(error)) {
