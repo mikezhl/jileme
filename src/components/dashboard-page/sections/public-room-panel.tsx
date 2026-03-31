@@ -103,55 +103,67 @@ export function PublicRoomPanel({
   publicRoomsError,
   publicRoomsLoading,
   publicRoomsPage,
+  publicRoomsTotalCount,
   publicRoomsTotalPages,
   t,
 }: PublicRoomPanelProps) {
   return (
-    <div className="room-history-details">
-      {publicRoomsError ? <p className="form-error">{publicRoomsError}</p> : null}
+    <details className="minimal-details">
+      <summary>
+        <div className="room-panel-summary">
+          <span>{t("公开房间", "Public Rooms")}</span>
+          <span className="room-panel-summary-meta">
+            {t(`共 ${publicRoomsTotalCount} 个`, `${publicRoomsTotalCount} total`)}
+          </span>
+        </div>
+      </summary>
 
-      {publicRoomsLoading && publicRooms.length === 0 ? (
-        <p className="panel-tip">{t("公开房间加载中...", "Loading public rooms...")}</p>
-      ) : publicRooms.length === 0 ? (
-        <p className="panel-tip">{t("暂无公开房间。", "No public rooms yet.")}</p>
-      ) : (
-        <>
-          <ul className="room-list">
-            {publicRooms.map((room) => (
-              <PublicRoomItem
-                key={`public-${room.roomId}`}
-                language={language}
-                room={room}
-                t={t}
-              />
-            ))}
-          </ul>
+      <div className="details-content room-history-details">
+        {publicRoomsError ? <p className="form-error">{publicRoomsError}</p> : null}
 
-          {publicRoomsTotalPages > 1 ? (
-            <div className="room-list-pagination">
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => void onPageChange(publicRoomsPage - 1)}
-                disabled={publicRoomsLoading || publicRoomsPage <= 1}
-              >
-                {t("上一页", "Previous")}
-              </button>
-              <span className="room-list-pagination-text">
-                {t("第", "Page")} {publicRoomsPage} / {publicRoomsTotalPages}
-              </span>
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => void onPageChange(publicRoomsPage + 1)}
-                disabled={publicRoomsLoading || publicRoomsPage >= publicRoomsTotalPages}
-              >
-                {t("下一页", "Next")}
-              </button>
-            </div>
-          ) : null}
-        </>
-      )}
-    </div>
+        {publicRoomsLoading && publicRooms.length === 0 ? (
+          <p className="panel-tip">{t("公开房间加载中...", "Loading public rooms...")}</p>
+        ) : publicRooms.length === 0 ? (
+          <p className="panel-tip">{t("暂无公开房间。", "No public rooms yet.")}</p>
+        ) : (
+          <>
+            <ul className="room-list">
+              {publicRooms.map((room) => (
+                <PublicRoomItem
+                  key={`public-${room.roomId}`}
+                  language={language}
+                  room={room}
+                  t={t}
+                />
+              ))}
+            </ul>
+
+            {publicRoomsTotalPages > 1 ? (
+              <div className="room-list-pagination">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => void onPageChange(publicRoomsPage - 1)}
+                  disabled={publicRoomsLoading || publicRoomsPage <= 1}
+                >
+                  {t("上一页", "Previous")}
+                </button>
+                <span className="room-list-pagination-text">
+                  {t("第", "Page")} {publicRoomsPage} / {publicRoomsTotalPages}
+                </span>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => void onPageChange(publicRoomsPage + 1)}
+                  disabled={publicRoomsLoading || publicRoomsPage >= publicRoomsTotalPages}
+                >
+                  {t("下一页", "Next")}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </details>
   );
 }

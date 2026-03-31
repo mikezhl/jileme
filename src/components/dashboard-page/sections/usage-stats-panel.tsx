@@ -22,23 +22,22 @@ export function UsageStatsPanel({
   usageSummary,
 }: UsageStatsPanelProps) {
   return (
-    <div className="settings-card">
-      <div className="settings-card-header">
-        <h3>{t("使用量统计", "Usage Stats")}</h3>
-        <p>
-          {t(
-            "仅统计房主名下房间产生的消耗。房间参与者不会累计自己的 Key 或平台用量。",
-            "Only usage generated under rooms you own is counted. Participants do not accumulate their own or platform usage.",
-          )}
-        </p>
-      </div>
+    <details className="minimal-details">
+      <summary>{t("使用量统计", "Usage Stats")}</summary>
 
       {!isAuthenticated ? (
-        <div>
+        <div className="details-content">
           <p className="panel-tip">{t("登录后可查看累计消耗统计。", "Sign in to view your accumulated usage.")}</p>
         </div>
       ) : (
-        <div>
+        <div className="details-content">
+          <p className="panel-tip">
+            {t(
+              "仅统计房主名下房间产生的消耗。房间参与者不会累计自己的 Key 或平台用量。",
+              "Only usage generated under rooms you own is counted. Participants do not accumulate their own or platform usage.",
+            )}
+          </p>
+
           <div className="usage-summary-grid">
             <section className="usage-summary-column" style={{ minWidth: 0 }}>
               <h4>{t("语音", "Voice")}</h4>
@@ -94,6 +93,6 @@ export function UsageStatsPanel({
           </div>
         </div>
       )}
-    </div>
+    </details>
   );
 }

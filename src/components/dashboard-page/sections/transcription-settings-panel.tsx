@@ -6,12 +6,14 @@ import {
   DASHSCOPE_DEFAULT_MODEL,
   MANUAL_SECRET_INPUT_PROPS,
   PROVIDERS,
+  configuredLabel,
   providerLabel,
   type DashboardTranslate,
   type TranscriptionFormState,
   type TranscriptionProviderName,
   type TranscriptionSettingsStatus,
 } from "../dashboard-page-support";
+import { SettingsInputField } from "./settings-input-field";
 
 type TranscriptionSettingsPanelProps = {
   isAuthenticated: boolean;
@@ -46,22 +48,23 @@ export function TranscriptionSettingsPanel({
   const providerMap = new Map(
     (transcriptionStatus?.providers ?? []).map((item) => [item.provider, item]),
   );
-
-  const isAnyConfigured = Boolean(transcriptionStatus?.providers.some((p) => p.configured));
+  const configuredProviders = PROVIDERS.filter((provider) => providerMap.get(provider)?.configured).length;
 
   return (
-    <div className="settings-card">
-      <div className="settings-card-header">
-        <h3 style={{ display: 'flex', alignItems: 'center' }}>
+    <details className="minimal-details settings-panel">
+      <summary>
+        <span className="settings-summary-title">
           {t("配置实时转录", "Configure Realtime Transcription")}
-          <span className={`setting-status-badge ${isAnyConfigured ? 'configured' : 'unconfigured'}`}>
-            {isAnyConfigured ? t("已配置", "Configured") : t("未配置", "Not configured")}
-          </span>
-        </h3>
-      </div>
+        </span>
+        <span className={`settings-status-pill ${configuredProviders > 0 ? "configured" : "unconfigured"}`}>
+          {configuredProviders > 0
+            ? t(`已配置 ${configuredProviders}/${PROVIDERS.length}`, `${configuredProviders}/${PROVIDERS.length} configured`)
+            : configuredLabel(false, language)}
+        </span>
+      </summary>
 
       {!isAuthenticated ? (
-        <div>
+        <div className="details-content">
           <p className="panel-tip">
             {t(
               "登录后可分别保存不同转录平台的 Key，并设置自己的默认实时转录工具。",
@@ -70,46 +73,33 @@ export function TranscriptionSettingsPanel({
           </p>
         </div>
       ) : (
-        <div className="settings-card-content">
+        <div className="details-content">
           <p className="panel-tip">
-            {t("默认转录工具", "Default provider")}:{" "}
-            <strong>
-              {transcriptionStatus?.defaultProvider
-                ? providerLabel(transcriptionStatus.defaultProvider, language)
-                : t("未设置", "Not selected")}
-            </strong>
-            。
             {t(
-              "房主在用户 Key 模式（true / full）下，必须同时拥有完整的 LiveKit 配置和默认转录工具配置，否则开启语音实时转录时会直接报错。平台 Key 与用户自己的 Key 不会混合使用。",
-              "When user-key mode is enabled (true / full), the room owner must have both a complete LiveKit setup and a configured default transcription provider, otherwise live voice transcription fails immediately. Platform keys and user keys are never mixed.",
+              "已保存的 API Key 会以掩码形式直接显示在输入框中。房主在用户 Key 模式（true / full）下，必须同时拥有完整的 LiveKit 配置和默认转录工具配置，否则开启语音实时转录时会直接报错。",
+              "Saved API keys appear masked directly in the inputs. When user-key mode is enabled (true / full), the room owner must have both a complete LiveKit setup and a configured default transcription provider, otherwise live voice transcription fails immediately.",
             )}
           </p>
 
           {PROVIDERS.map((provider) => {
             const providerStatus = providerMap.get(provider);
-            const isConfigured = Boolean(providerStatus?.configured);
             const isDefault = transcriptionStatus?.defaultProvider === provider;
+            const isConfigured = Boolean(providerStatus?.configured);
 
             return (
-              <section
-                key={provider}
-                className="key-status-grid"
-                style={{ gap: "12px", background: "var(--surface)", border: "1px solid var(--line)" }}
-              >
-                <div>
-                  <h4 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
-                    {providerLabel(provider, language)}
-                    <span className={`setting-status-badge ${isConfigured ? 'configured' : 'unconfigured'}`} style={{ marginLeft: "12px" }}>
-                      {isConfigured ? t("已配置", "Configured") : t("未配置", "Not configured")}
-                    </span>
-                    {isDefault && (
-                      <span className="setting-status-badge configured" style={{ background: "var(--foreground)", color: "var(--background)", marginLeft: "8px" }}>
-                        {t("默认", "Default")}
+              <section key={provider} className="settings-provider-block">
+                <div className="settings-provider-head">
+                  <div className="settings-provider-title-row">
+                    <h4>{providerLabel(provider, language)}</h4>
+                    <div className="settings-provider-meta">
+                      <span className={`settings-status-pill ${isConfigured ? "configured" : "unconfigured"}`}>
+                        {configuredLabel(isConfigured, language)}
                       </span>
-                    )}
-                  </h4>
+                      {isDefault ? <span className="settings-status-pill accent">{t("默认工具", "Default")}</span> : null}
+                    </div>
+                  </div>
                   {provider === "dashscope" ? (
-                    <p className="panel-tip" style={{ marginTop: "6px" }}>
+                    <p className="panel-tip settings-provider-tip">
                       {t("默认模型", "Default model")}: {DASHSCOPE_DEFAULT_MODEL}
                     </p>
                   ) : null}
@@ -120,15 +110,17 @@ export function TranscriptionSettingsPanel({
                   onSubmit={(event) => void onSaveTranscription(event, provider)}
                   autoComplete="off"
                 >
-                  <input
+                  <SettingsInputField
                     {...MANUAL_SECRET_INPUT_PROPS}
+                    label={`${providerLabel(provider, language)} API Key`}
+                    maskedValue={providerStatus?.credentialMask}
                     type="password"
                     name={`${provider}-api-key`}
                     value={transcriptionForm[provider]}
                     onChange={(event) =>
                       setTranscriptionForm((current) => ({ ...current, [provider]: event.target.value }))
                     }
-                    placeholder={providerStatus?.credentialMask || (provider === "dashscope" ? "DASHSCOPE_API_KEY" : "DEEPGRAM_API_KEY")}
+                    placeholder={provider === "dashscope" ? "DASHSCOPE_API_KEY" : "DEEPGRAM_API_KEY"}
                   />
 
                   {provider === "dashscope" ? (
@@ -144,7 +136,7 @@ export function TranscriptionSettingsPanel({
                     <button type="submit" className="primary-btn" disabled={transcriptionLoading !== null}>
                       {transcriptionLoading === `save:${provider}`
                         ? t("保存中...", "Saving...")
-                        : t("保存配置", "Save Settings")}
+                        : t("保存", "Save")}
                     </button>
                     <button
                       type="button"
@@ -159,7 +151,7 @@ export function TranscriptionSettingsPanel({
                     <button
                       type="button"
                       className={isDefault ? "primary-btn" : "ghost-btn"}
-                      disabled={transcriptionLoading !== null || !isConfigured}
+                      disabled={transcriptionLoading !== null || !providerStatus?.configured}
                       onClick={() => void onSetDefaultProvider(provider)}
                     >
                       {transcriptionLoading === `default:${provider}`
@@ -177,6 +169,6 @@ export function TranscriptionSettingsPanel({
           {transcriptionError ? <p className="form-error">{transcriptionError}</p> : null}
         </div>
       )}
-    </div>
+    </details>
   );
 }

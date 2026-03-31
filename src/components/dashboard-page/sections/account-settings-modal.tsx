@@ -95,8 +95,8 @@ export function AccountSettingsModal({
             )}
           </div>
 
-          <form className="settings-field-block" onSubmit={(event) => void onSubmitChangePassword(event)}>
-            <div style={{ display: "flex", flexDirection: "column" }}>
+          <form className="settings-field-block account-password-block" onSubmit={(event) => void onSubmitChangePassword(event)}>
+            <div className="account-password-head">
               <span className="settings-field-label">{t("修改密码", "Change Password")}</span>
               {canResetPasswordByEmail ? (
                 <p className="settings-field-desc">{t(`验证码将发送至 ${user.email}`, `Verification code will be sent to ${user.email}`)}</p>
@@ -193,7 +193,7 @@ export function AccountSettingsModal({
                   spellCheck={false}
                 />
 
-                <button type="submit" className="primary-btn" disabled={changePasswordLoading} style={{ marginTop: 4 }}>
+                <button type="submit" className="primary-btn" disabled={changePasswordLoading}>
                   {changePasswordLoading ? t("更新中...", "Updating...") : t("更新密码", "Update Password")}
                 </button>
               </>

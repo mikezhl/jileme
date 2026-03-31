@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import Link from "next/link";
 
 import { RoomIdCopyButton } from "@/components/room-id-copy-button";
@@ -14,21 +13,24 @@ import {
 
 type RoomHistoryPanelProps = {
   createdRooms: RoomSummary[];
+  dashboardLoading: boolean;
   hasHistory: boolean;
   isAuthenticated: boolean;
   joinedRooms: RoomSummary[];
   language: UiLanguage;
+  onRefresh: () => Promise<void>;
   t: DashboardTranslate;
 };
 
 type RoomHistoryItemProps = {
-  isOwner: boolean;
+  detailLabel: string;
+  detailValue: string;
   language: UiLanguage;
   room: RoomSummary;
   t: DashboardTranslate;
 };
 
-function RoomHistoryItem({ isOwner, language, room, t }: RoomHistoryItemProps) {
+function RoomHistoryItem({ detailLabel, detailValue, language, room, t }: RoomHistoryItemProps) {
   const roomDisplayName = getRoomDisplayName(room.roomName, room.roomId);
   const showRoomCode = Boolean(room.roomName);
 
@@ -79,7 +81,7 @@ function RoomHistoryItem({ isOwner, language, room, t }: RoomHistoryItemProps) {
                 {room.messageCount}
               </p>
               <p>
-                {t("最近活跃", "Last active")}: {formatDate(room.updatedAt, language)}
+                {detailLabel}: {detailValue}
               </p>
             </div>
           </div>
@@ -87,9 +89,6 @@ function RoomHistoryItem({ isOwner, language, room, t }: RoomHistoryItemProps) {
             <span className="room-list-status" data-status={room.status}>
               {roomStatusLabel(room.status, language)}
             </span>
-            {isOwner ? (
-              <span className="room-list-status room-list-status-public">{t("房主", "Owner")}</span>
-            ) : null}
             {room.isPublic ? (
               <span className="room-list-status room-list-status-public">{t("公开", "Public")}</span>
             ) : null}
@@ -100,83 +99,128 @@ function RoomHistoryItem({ isOwner, language, room, t }: RoomHistoryItemProps) {
   );
 }
 
-const PAGE_SIZE = 10;
-
 export function RoomHistoryPanel({
   createdRooms,
+  dashboardLoading,
   hasHistory,
   isAuthenticated,
   joinedRooms,
   language,
+  onRefresh,
   t,
 }: RoomHistoryPanelProps) {
-  const [page, setPage] = useState(1);
-
-  const allRooms = useMemo(() => {
-    const createdMap = new Map(createdRooms.map((r) => [r.roomId, r]));
-    const combined = [
-      ...createdRooms.map((r) => ({ room: r, isOwner: true })),
-      ...joinedRooms
-        .filter((r) => !createdMap.has(r.roomId))
-        .map((r) => ({ room: r, isOwner: false })),
-    ];
-    return combined.sort(
-      (a, b) => new Date(b.room.updatedAt).getTime() - new Date(a.room.updatedAt).getTime()
-    );
-  }, [createdRooms, joinedRooms]);
-
-  const totalPages = Math.max(1, Math.ceil(allRooms.length / PAGE_SIZE));
-  const visibleRooms = allRooms.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
   return (
-    <div className="room-history-details">
-      {!isAuthenticated ? (
-        <p className="panel-tip">
-          {t(
-            "登录后可查看你参与的房间记录。",
-            "Sign in to view rooms you joined.",
-          )}
-        </p>
-      ) : !hasHistory || allRooms.length === 0 ? (
-        <p className="panel-tip">{t("暂无历史房间。", "No room history yet.")}</p>
-      ) : (
-        <>
-          <ul className="room-list">
-            {visibleRooms.map(({ room, isOwner }) => (
-              <RoomHistoryItem
-                key={room.roomId}
-                isOwner={isOwner}
-                language={language}
-                room={room}
-                t={t}
-              />
-            ))}
-          </ul>
-          {totalPages > 1 ? (
-            <div className="room-list-pagination">
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
+    <details className="minimal-details">
+      <summary>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>{t("查看历史房间", "Room History")}</span>
+          {isAuthenticated ? (
+            <button
+              type="button"
+              title={t("刷新历史", "Refresh history")}
+              style={{
+                padding: "4px",
+                background: "transparent",
+                border: "none",
+                color: "var(--muted)",
+                cursor: dashboardLoading ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: dashboardLoading ? 0.5 : 1,
+                transition: "opacity 0.2s, color 0.2s",
+                borderRadius: "4px",
+              }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.color = "var(--foreground)";
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.color = "var(--muted)";
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!dashboardLoading) {
+                  void onRefresh();
+                }
+              }}
+              disabled={dashboardLoading}
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                {t("上一页", "Previous")}
-              </button>
-              <span className="room-list-pagination-text">
-                {t("第", "Page")} {page} / {totalPages}
-              </span>
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-              >
-                {t("下一页", "Next")}
-              </button>
-            </div>
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            </button>
           ) : null}
-        </>
+        </div>
+      </summary>
+
+      {!isAuthenticated ? (
+        <div className="details-content">
+          <p className="panel-tip">
+            {t(
+              "登录后可查看你创建和参与的房间记录。",
+              "Sign in to view rooms you created or joined.",
+            )}
+          </p>
+        </div>
+      ) : (
+        <div className="details-content room-history-details">
+          {!hasHistory ? (
+            <p className="panel-tip">{t("暂无历史房间。", "No room history yet.")}</p>
+          ) : (
+            <>
+              <div className="history-group">
+                <h3>{t("我创建的房间", "Rooms I Created")}</h3>
+                {createdRooms.length === 0 ? (
+                  <p className="panel-tip">{t("暂无记录。", "No records.")}</p>
+                ) : (
+                  <ul className="room-list">
+                    {createdRooms.map((room) => (
+                      <RoomHistoryItem
+                        key={`created-${room.roomId}`}
+                        detailLabel={t("创建", "Created")}
+                        detailValue={formatDate(room.createdAt, language)}
+                        language={language}
+                        room={room}
+                        t={t}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="history-group">
+                <h3>{t("我参与的房间", "Rooms I Joined")}</h3>
+                {joinedRooms.length === 0 ? (
+                  <p className="panel-tip">{t("暂无记录。", "No records.")}</p>
+                ) : (
+                  <ul className="room-list">
+                    {joinedRooms.map((room) => (
+                      <RoomHistoryItem
+                        key={`joined-${room.roomId}`}
+                        detailLabel={t("最近加入", "Last joined")}
+                        detailValue={formatDate(room.joinedAt ?? room.updatedAt, language)}
+                        language={language}
+                        room={room}
+                        t={t}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       )}
-    </div>
+    </details>
   );
 }

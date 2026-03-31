@@ -1588,6 +1588,16 @@ export function RoomPageView({
   voiceSettingsPending,
 }: RoomPageViewProps) {
   const statusTooltipRef = useRef<HTMLDivElement | null>(null);
+  const [isMobileHeaderCollapsed, setIsMobileHeaderCollapsed] = useState(false);
+  const showSpeakerSwitchButton = speakerSwitchEnabled && canParticipate;
+  const speakerSwitchButtonLabel = speakerSwitchPending
+    ? "..."
+    : speakerMode === "self"
+      ? t("切换", "Switch")
+      : t("退出", "Exit");
+  const mobileHeaderToggleLabel = isMobileHeaderCollapsed
+    ? t("展开头部", "Expand header")
+    : t("收起头部", "Collapse header");
 
   useEffect(() => {
     if (activeStatusTooltip === null) {
@@ -1612,6 +1622,14 @@ export function RoomPageView({
       document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [activeStatusTooltip, onCloseActiveStatusTooltip]);
+
+  useEffect(() => {
+    if (!isMobileHeaderCollapsed || activeStatusTooltip === null) {
+      return;
+    }
+
+    onCloseActiveStatusTooltip();
+  }, [activeStatusTooltip, isMobileHeaderCollapsed, onCloseActiveStatusTooltip]);
 
   const sidebarContent = (
         <RoomSidebarPanel
@@ -1645,16 +1663,58 @@ export function RoomPageView({
   return (
     <main className="room-page">
       <section className="room-shell room-shell-chat">
-        <header className="room-header">
+        <header className={`room-header room-header-collapsible${isMobileHeaderCollapsed ? " is-mobile-collapsed" : ""}`}>
+          <div className="room-header-mobile-bar">
+            <button
+              type="button"
+              className="room-header-mobile-bar-title room-header-mobile-bar-title-button"
+              title={roomDisplayName}
+              onClick={() => setIsMobileHeaderCollapsed(false)}
+            >
+              {roomDisplayName}
+            </button>
+            <div className="room-header-mobile-bar-controls">
+              <button
+                type="button"
+                className="ghost-btn room-mobile-action-btn room-header-mobile-details-btn"
+                onClick={onOpenMobileAnalysis}
+              >
+                {t("详情", "Details")}
+              </button>
+              <button
+                type="button"
+                className="back-icon-btn room-header-collapse-toggle room-header-collapse-toggle-inline"
+                aria-expanded={!isMobileHeaderCollapsed}
+                aria-label={mobileHeaderToggleLabel}
+                title={mobileHeaderToggleLabel}
+                onClick={() => setIsMobileHeaderCollapsed(false)}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           <div className="room-header-title">
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <div className="room-header-title-row">
               <h1>{roomDisplayName}</h1>
 
               <div
                 ref={statusTooltipRef}
-                style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}
+                className="room-header-statuses"
               >
-                <div style={{ position: "relative" }}>
+                <div className="room-header-status-item">
                   <span className={`room-status ${roomConnectionStatusClass}`} onClick={onConnectionStatusClick}>
                     <span className="status-icon">C</span>
                     <span className="status-label-text">
@@ -1676,7 +1736,7 @@ export function RoomPageView({
                   )}
                 </div>
 
-                <div style={{ position: "relative" }}>
+                <div className="room-header-status-item">
                   <span
                     className={`room-status transcription-status ${transcriptionState}`}
                     onClick={onTranscriptionStatusClick}
@@ -1718,53 +1778,37 @@ export function RoomPageView({
           </div>
 
           <Link className="room-back-link" href="/" title={t("返回", "Back")}>
-            <span className="desktop-only ghost-btn" style={{ height: "40px" }}>
+            <span className="ghost-btn room-header-short-action" style={{ height: "40px" }}>
               {t("返回", "Back")}
-            </span>
-            <span className="mobile-only-flex back-icon-btn">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
             </span>
           </Link>
 
           <div className="room-actions">
-            <button
-              type="button"
-              className="ghost-btn mobile-only-flex"
-              style={{ height: "40px" }}
-              onClick={onOpenMobileAnalysis}
-            >
-              {t("详情", "Details")}
-            </button>
-            {speakerSwitchEnabled && canParticipate && (
+            <Link className="ghost-btn mobile-only-flex room-mobile-action-btn" href="/" title={t("返回", "Back")}>
+              {t("返回", "Back")}
+            </Link>
+            {showSpeakerSwitchButton && (
               <button
                 type="button"
-                className="ghost-btn"
+                className="ghost-btn room-mobile-action-btn room-header-short-action"
                 style={{ height: "40px" }}
                 onClick={onSpeakerSwitchAction}
                 disabled={isEnded || connectionState === "connecting" || speakerSwitchPending}
               >
-                {speakerSwitchPending
-                  ? "..."
-                  : speakerMode === "self"
-                    ? t("切换", "Switch")
-                    : t("退出切换", "Exit")}
+                {speakerSwitchButtonLabel}
               </button>
             )}
+            <button
+              type="button"
+              className="ghost-btn mobile-only-flex room-mobile-action-btn"
+              onClick={onOpenMobileAnalysis}
+            >
+              {t("详情", "Details")}
+            </button>
             {isCreator && (
               <button
                 type="button"
-                className="destructive-btn"
+                className="destructive-btn room-mobile-action-btn"
                 style={{ height: "40px" }}
                 onClick={onOpenEndRoomConfirm}
                 disabled={endingRoom || isEnded}
@@ -1773,6 +1817,29 @@ export function RoomPageView({
               </button>
             )}
           </div>
+
+          <button
+            type="button"
+            className="back-icon-btn room-header-collapse-toggle"
+            aria-expanded={!isMobileHeaderCollapsed}
+            aria-label={mobileHeaderToggleLabel}
+            title={mobileHeaderToggleLabel}
+            onClick={() => setIsMobileHeaderCollapsed((current) => !current)}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={isMobileHeaderCollapsed ? "M6 9l6 6 6-6" : "M6 15l6-6 6 6"} />
+            </svg>
+          </button>
         </header>
 
         {roomError && (
