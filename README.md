@@ -17,6 +17,7 @@ Realtime debate and discussion workspace with voice, text, transcription, and AI
   - `deepgram`
   - `dashscope`
 - Real-time AI analysis and final summary with flexible analysis schemes.
+- Users can import external debate records for AI analysis
 - User-customized transcription and LLM providers
 - Room owner can end a room; ended rooms become read-only
 - Usage tracking and limits
@@ -60,6 +61,7 @@ pnpm dev
   - `deepgram`
   - `dashscope`
 - AI 实时分析和最终总结，可选择多种分析方案
+- 用户可以导入外部辩论记录并执行 AI 分析
 - 用户自定义配置转录与大模型供应商
 - 房主可以结束房间；结束后房间进入只读状态
 - 用量统计与限制
